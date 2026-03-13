@@ -47,7 +47,7 @@ export const useDashboardData = () => {
         // Email stats
         supabase.from('campaign_communications').select('email_status').eq('created_by', user.id).eq('communication_type', 'email'),
         // Today's agenda
-        supabase.from('action_items').select('id, title, priority, due_time, module_type').eq('assigned_to', user.id).eq('due_date', new Date().toISOString().split('T')[0]).neq('status', 'Completed').neq('status', 'Deferred').order('due_time', { ascending: true }).limit(10),
+        supabase.from('action_items').select('id, title, priority, due_time, module_type').eq('assigned_to', user.id).eq('due_date', new Date().toISOString().split('T')[0]).neq('status', 'Completed').neq('status', 'Cancelled').order('due_time', { ascending: true }).limit(10),
         // Recent activities
         supabase.from('security_audit_log').select('id, action, resource_type, resource_id, created_at, details').order('created_at', { ascending: false }).limit(15),
       ]);
