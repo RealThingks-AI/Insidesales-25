@@ -100,16 +100,11 @@ const Auth = () => {
       }
 
       if (data.user && data.session) {
-        console.log('Login successful for Safari');
         toast({
           title: "Success",
           description: "Logged in successfully!",
         });
-        
-        // Safari-compatible redirect with delay
-        setTimeout(() => {
-          window.location.replace("/");
-        }, 500);
+        // AuthRoute will handle redirect via React Router
       } else {
         throw new Error('No user data received');
       }

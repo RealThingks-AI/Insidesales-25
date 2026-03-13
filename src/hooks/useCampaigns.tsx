@@ -144,6 +144,38 @@ export function useCampaigns() {
         );
       }
 
+      // Clone campaign contacts
+      const { data: contacts } = await supabase
+        .from('campaign_contacts')
+        .select('*')
+        .eq('campaign_id', original.id);
+
+      if (contacts?.length) {
+        await supabase.from('campaign_contacts').insert(
+          contacts.map(({ id, campaign_id, created_at, ...c }: any) => ({
+            ...c,
+            campaign_id: newCampaign.id,
+            created_by: user!.id,
+          }))
+        );
+      }
+
+      // Clone campaign accounts
+      const { data: accounts } = await supabase
+        .from('campaign_accounts')
+        .select('*')
+        .eq('campaign_id', original.id);
+
+      if (accounts?.length) {
+        await supabase.from('campaign_accounts').insert(
+          accounts.map(({ id, campaign_id, created_at, ...a }: any) => ({
+            ...a,
+            campaign_id: newCampaign.id,
+            created_by: user!.id,
+          }))
+        );
+      }
+
       return newCampaign;
     },
     onSuccess: (data) => {
