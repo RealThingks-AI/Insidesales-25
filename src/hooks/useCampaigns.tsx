@@ -34,9 +34,10 @@ export function useCampaigns() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       toast({ title: 'Campaign created successfully' });
+      if (data) logCreate('campaigns', data.id, data);
     },
     onError: (err: any) => {
       toast({ title: 'Error creating campaign', description: err.message, variant: 'destructive' });
