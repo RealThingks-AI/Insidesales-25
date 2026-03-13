@@ -9,6 +9,7 @@ export function useCampaigns() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { logCreate, logUpdate, logDelete } = useCRUDAudit();
 
   const campaignsQuery = useQuery({
     queryKey: ['campaigns'],
