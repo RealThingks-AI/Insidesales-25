@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     let mounted = true;
-    let sessionFetched = false;
+    const sessionFetchedRef = { current: false };
 
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -97,17 +97,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         if (event === 'SIGNED_OUT') {
           cleanupAuthState();
-          // Use replace instead of href for Safari compatibility
-          if (window.location.pathname !== '/auth') {
-            window.location.replace('/auth');
-          }
-        }
-        
-        if (event === 'SIGNED_IN' && session) {
-          // Ensure we're on the right page after successful login
-          if (window.location.pathname === '/auth') {
-            window.location.replace('/');
-          }
         }
         
         if (event === 'TOKEN_REFRESHED' && session) {
@@ -117,7 +106,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
         
         setLoading(false);
-        sessionFetched = true;
+        sessionFetchedRef.current = true;
       }
     );
 
