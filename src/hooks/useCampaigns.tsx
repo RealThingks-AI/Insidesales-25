@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useCRUDAudit } from '@/hooks/useCRUDAudit';
 import type { Campaign, CampaignAccount, CampaignContact, CampaignCommunication, CampaignMaterial } from '@/types/campaign';
 
 export function useCampaigns() {
