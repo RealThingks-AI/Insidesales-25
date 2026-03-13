@@ -2,12 +2,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useCRUDAudit } from '@/hooks/useCRUDAudit';
 import type { Campaign, CampaignAccount, CampaignContact, CampaignCommunication, CampaignMaterial } from '@/types/campaign';
 
 export function useCampaigns() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { logCreate, logUpdate, logDelete } = useCRUDAudit();
 
   const campaignsQuery = useQuery({
     queryKey: ['campaigns'],
@@ -32,9 +34,10 @@ export function useCampaigns() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       toast({ title: 'Campaign created successfully' });
+      if (data) logCreate('campaigns', data.id, data);
     },
     onError: (err: any) => {
       toast({ title: 'Error creating campaign', description: err.message, variant: 'destructive' });
@@ -52,9 +55,10 @@ export function useCampaigns() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       toast({ title: 'Campaign updated successfully' });
+      if (data) logUpdate('campaigns', variables.id, variables, data);
     },
     onError: (err: any) => {
       toast({ title: 'Error updating campaign', description: err.message, variant: 'destructive' });
@@ -63,12 +67,22 @@ export function useCampaigns() {
 
   const deleteCampaign = useMutation({
     mutationFn: async (id: string) => {
+      // Delete child records first to avoid orphans
+      await Promise.all([
+        supabase.from('campaign_contacts').delete().eq('campaign_id', id),
+        supabase.from('campaign_accounts').delete().eq('campaign_id', id),
+        supabase.from('campaign_communications').delete().eq('campaign_id', id),
+        supabase.from('campaign_email_templates').delete().eq('campaign_id', id),
+        supabase.from('campaign_phone_scripts').delete().eq('campaign_id', id),
+        supabase.from('campaign_materials').delete().eq('campaign_id', id),
+      ]);
       const { error } = await supabase.from('campaigns').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       toast({ title: 'Campaign deleted' });
+      logDelete('campaigns', id);
     },
     onError: (err: any) => {
       toast({ title: 'Error deleting campaign', description: err.message, variant: 'destructive' });

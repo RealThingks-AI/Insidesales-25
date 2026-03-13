@@ -22,7 +22,18 @@ import Notifications from "./pages/Notifications";
 import { useState } from "react";
 import { ShieldAlert } from "lucide-react";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 // Access Denied component
 const AccessDenied = () => (
@@ -59,7 +70,13 @@ const PageAccessGuard = ({ children }: { children: React.ReactNode }) => {
 
 // Layout Component for all pages with fixed sidebar
 const FixedSidebarLayout = ({ children }: { children: React.ReactNode }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try { return localStorage.getItem('sidebar-open') === 'true'; } catch { return false; }
+  });
+  const handleSidebarToggle = (open: boolean) => {
+    setSidebarOpen(open);
+    try { localStorage.setItem('sidebar-open', String(open)); } catch {}
+  };
   const location = useLocation();
   
   const controlledScrollRoutes = ['/action-items', '/contacts', '/deals', '/campaigns', '/settings', '/notifications', '/', '/accounts'];
@@ -68,7 +85,7 @@ const FixedSidebarLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="h-screen flex w-full overflow-hidden">
       <div className="fixed top-0 left-0 z-50 h-full">
-        <AppSidebar isFixed={true} isOpen={sidebarOpen} onToggle={setSidebarOpen} />
+        <AppSidebar isFixed={true} isOpen={sidebarOpen} onToggle={handleSidebarToggle} />
       </div>
       <main 
         className="flex-1 bg-background h-screen overflow-hidden"

@@ -81,7 +81,7 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
         .select('*')
         .order('due_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false })
-        .limit(5000);
+        .limit(1000);
 
       if (filters.module_type !== 'all') {
         query = query.eq('module_type', filters.module_type);
