@@ -8,21 +8,22 @@ interface SettingsCardProps {
   children: React.ReactNode;
 }
 
-const SettingsCard = ({ icon: Icon, title, description, children }: SettingsCardProps) => {
+const SettingsCard = ({
+  icon: Icon,
+  title,
+  description,
+  children
+}: SettingsCardProps) => {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10 text-primary">
-            <Icon className="h-5 w-5" />
-          </div>
-          <div>
-            <CardTitle className="text-base font-medium">{title}</CardTitle>
-            {description && (
-              <CardDescription className="text-sm">{description}</CardDescription>
-            )}
-          </div>
-        </div>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Icon className="h-5 w-5 text-primary" />
+          {title}
+        </CardTitle>
+        {description && (
+          <CardDescription>{description}</CardDescription>
+        )}
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>

@@ -3,10 +3,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { Key, Loader2, Monitor, Smartphone, Clock, LogOut, RefreshCw } from 'lucide-react';
+import { Key, Loader2, Monitor, Smartphone, Clock, LogOut, RefreshCw, Shield } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
 import PasswordChangeModal from '../PasswordChangeModal';
+import { TerminateSessionDialog, TerminateAllSessionsDialog } from '../SessionDialogs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
 
 interface Session {
   id: string;
@@ -14,6 +26,7 @@ interface Session {
   user_agent: string | null;
   device_info: { browser?: string; os?: string } | null;
   last_active_at: string;
+  created_at?: string;
   is_current?: boolean;
 }
 
@@ -21,19 +34,35 @@ interface SecuritySectionProps {
   userId: string;
 }
 
+// Get browser session ID (same logic as useAuth)
+const getBrowserSessionId = (): string => {
+  const storageKey = 'browser_session_id';
+  try {
+    return localStorage.getItem(storageKey) || '';
+  } catch {
+    return '';
+  }
+};
+
 const SecuritySection = ({ userId }: SecuritySectionProps) => {
+  const { signOut } = useAuth();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [currentToken, setCurrentToken] = useState<string>('');
+  const [currentBrowserSessionId, setCurrentBrowserSessionId] = useState<string>('');
+  
+  // Dialog states
+  const [showTerminateDialog, setShowTerminateDialog] = useState(false);
+  const [showTerminateAllDialog, setShowTerminateAllDialog] = useState(false);
+  const [showSignOutCurrentDialog, setShowSignOutCurrentDialog] = useState(false);
+  const [sessionToTerminate, setSessionToTerminate] = useState<string | null>(null);
 
   const fetchSessions = async () => {
     if (!userId) return;
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token?.substring(0, 20) || '';
-      setCurrentToken(token);
+      const browserSessionId = getBrowserSessionId();
+      setCurrentBrowserSessionId(browserSessionId);
 
       const { data, error } = await supabase
         .from('user_sessions')
@@ -50,7 +79,8 @@ const SecuritySection = ({ userId }: SecuritySectionProps) => {
         user_agent: s.user_agent,
         device_info: s.device_info as { browser?: string; os?: string } | null,
         last_active_at: s.last_active_at,
-        is_current: s.session_token === token
+        created_at: s.created_at,
+        is_current: s.session_token === browserSessionId
       })));
     } catch (error) {
       console.error('Error fetching sessions:', error);
@@ -63,31 +93,47 @@ const SecuritySection = ({ userId }: SecuritySectionProps) => {
     fetchSessions();
   }, [userId]);
 
-  const terminateSession = async (sessionId: string) => {
+  const handleTerminateClick = (sessionId: string) => {
+    setSessionToTerminate(sessionId);
+    setShowTerminateDialog(true);
+  };
+
+  const confirmTerminateSession = async () => {
+    if (!sessionToTerminate) return;
     try {
       await supabase
         .from('user_sessions')
         .update({ is_active: false })
-        .eq('id', sessionId);
+        .eq('id', sessionToTerminate);
       toast.success('Session terminated');
       fetchSessions();
     } catch (error) {
       toast.error('Failed to terminate session');
+    } finally {
+      setShowTerminateDialog(false);
+      setSessionToTerminate(null);
     }
   };
 
-  const terminateAllOthers = async () => {
+  const confirmTerminateAllOthers = async () => {
     try {
       await supabase
         .from('user_sessions')
         .update({ is_active: false })
         .eq('user_id', userId)
-        .neq('session_token', currentToken);
+        .neq('session_token', currentBrowserSessionId);
       toast.success('All other sessions terminated');
       fetchSessions();
     } catch (error) {
       toast.error('Failed to terminate sessions');
+    } finally {
+      setShowTerminateAllDialog(false);
     }
+  };
+
+  const handleSignOutCurrent = async () => {
+    setShowSignOutCurrentDialog(false);
+    await signOut();
   };
 
   const parseUserAgent = (ua: string | null) => {
@@ -113,6 +159,7 @@ const SecuritySection = ({ userId }: SecuritySectionProps) => {
   };
 
   const otherSessionsCount = sessions.filter(s => !s.is_current).length;
+  const currentSession = sessions.find(s => s.is_current);
 
   return (
     <>
@@ -150,7 +197,12 @@ const SecuritySection = ({ userId }: SecuritySectionProps) => {
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
                 {otherSessionsCount > 0 && (
-                  <Button variant="outline" size="sm" onClick={terminateAllOthers} className="h-8 text-xs">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setShowTerminateAllDialog(true)} 
+                    className="h-8 text-xs"
+                  >
                     <LogOut className="h-3.5 w-3.5 mr-1" />
                     Sign Out Others
                   </Button>
@@ -169,7 +221,42 @@ const SecuritySection = ({ userId }: SecuritySectionProps) => {
               </p>
             ) : (
               <div className="space-y-2">
-                {sessions.map((session) => {
+                {/* Current Session - Highlighted */}
+                {currentSession && (
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border-2 border-primary/20">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Shield className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">
+                            {(currentSession.device_info || parseUserAgent(currentSession.user_agent)).browser} · {(currentSession.device_info || parseUserAgent(currentSession.user_agent)).os}
+                          </span>
+                          <Badge variant="default" className="text-xs h-5 bg-primary">
+                            This Device
+                          </Badge>
+                        </div>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          Active now
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                      onClick={() => setShowSignOutCurrentDialog(true)}
+                    >
+                      <LogOut className="h-3.5 w-3.5 mr-1" />
+                      Sign Out
+                    </Button>
+                  </div>
+                )}
+
+                {/* Other Sessions */}
+                {sessions.filter(s => !s.is_current).map((session) => {
                   const { browser, os } = session.device_info || parseUserAgent(session.user_agent);
                   return (
                     <div key={session.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
@@ -178,28 +265,21 @@ const SecuritySection = ({ userId }: SecuritySectionProps) => {
                           {getDeviceIcon(session.user_agent)}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{browser} · {os}</span>
-                            {session.is_current && (
-                              <Badge variant="secondary" className="text-xs h-5">Current</Badge>
-                            )}
-                          </div>
+                          <span className="text-sm font-medium">{browser} · {os}</span>
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Clock className="h-3 w-3" />
                             {format(new Date(session.last_active_at), 'MMM d, h:mm a')}
                           </span>
                         </div>
                       </div>
-                      {!session.is_current && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => terminateSession(session.id)}
-                        >
-                          <LogOut className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleTerminateClick(session.id)}
+                      >
+                        <LogOut className="h-4 w-4" />
+                      </Button>
                     </div>
                   );
                 })}
@@ -210,6 +290,38 @@ const SecuritySection = ({ userId }: SecuritySectionProps) => {
       </div>
 
       <PasswordChangeModal open={showPasswordModal} onOpenChange={setShowPasswordModal} />
+      
+      {/* Terminate Single Session Dialog */}
+      <TerminateSessionDialog
+        open={showTerminateDialog}
+        onOpenChange={setShowTerminateDialog}
+        onConfirm={confirmTerminateSession}
+      />
+
+      {/* Terminate All Other Sessions Dialog */}
+      <TerminateAllSessionsDialog
+        open={showTerminateAllDialog}
+        onOpenChange={setShowTerminateAllDialog}
+        onConfirm={confirmTerminateAllOthers}
+      />
+
+      {/* Sign Out Current Session Dialog */}
+      <AlertDialog open={showSignOutCurrentDialog} onOpenChange={setShowSignOutCurrentDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign Out of This Device?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will be logged out and redirected to the login page. You'll need to sign in again to access your account.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSignOutCurrent} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Sign Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };

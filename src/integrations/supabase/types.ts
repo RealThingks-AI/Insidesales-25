@@ -1348,10 +1348,14 @@ export type Database = {
           admin_access: boolean | null
           created_at: string | null
           description: string | null
+          field_sales_access: boolean | null
           id: string
+          inside_sales_access: boolean | null
           manager_access: boolean | null
           page_name: string
           route: string
+          sales_head_access: boolean | null
+          super_admin_access: boolean | null
           updated_at: string | null
           user_access: boolean | null
         }
@@ -1359,10 +1363,14 @@ export type Database = {
           admin_access?: boolean | null
           created_at?: string | null
           description?: string | null
+          field_sales_access?: boolean | null
           id?: string
+          inside_sales_access?: boolean | null
           manager_access?: boolean | null
           page_name: string
           route: string
+          sales_head_access?: boolean | null
+          super_admin_access?: boolean | null
           updated_at?: string | null
           user_access?: boolean | null
         }
@@ -1370,10 +1378,14 @@ export type Database = {
           admin_access?: boolean | null
           created_at?: string | null
           description?: string | null
+          field_sales_access?: boolean | null
           id?: string
+          inside_sales_access?: boolean | null
           manager_access?: boolean | null
           page_name?: string
           route?: string
+          sales_head_access?: boolean | null
+          super_admin_access?: boolean | null
           updated_at?: string | null
           user_access?: boolean | null
         }
@@ -1606,7 +1618,6 @@ export type Database = {
       archive_completed_action_items: { Args: never; Returns: number }
       get_user_role: { Args: { p_user_id: string }; Returns: string }
       is_current_user_admin: { Args: never; Returns: boolean }
-      is_current_user_admin_by_metadata: { Args: never; Returns: boolean }
       is_user_admin: { Args: { user_id?: string }; Returns: boolean }
       log_data_access: {
         Args: {
@@ -1631,7 +1642,14 @@ export type Database = {
       }
     }
     Enums: {
-      user_role: "admin" | "manager" | "user"
+      user_role:
+        | "admin"
+        | "manager"
+        | "user"
+        | "super_admin"
+        | "sales_head"
+        | "field_sales"
+        | "inside_sales"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1759,7 +1777,15 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      user_role: ["admin", "manager", "user"],
+      user_role: [
+        "admin",
+        "manager",
+        "user",
+        "super_admin",
+        "sales_head",
+        "field_sales",
+        "inside_sales",
+      ],
     },
   },
 } as const

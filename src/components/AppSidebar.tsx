@@ -1,22 +1,20 @@
 import { 
   Home, 
   Users, 
-  UserPlus, 
   BarChart3, 
   Settings,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
+  Pin,
+  PinOff,
   Bell,
-  Sun,
-  Moon,
+  CheckSquare,
   Building2,
-  CheckSquare
+  Megaphone
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useThemePreferences } from "@/hooks/useThemePreferences";
-import { useState, useMemo } from "react";
+import { useState } from "react";
+import { useNotifications } from "@/hooks/useNotifications";
 import { usePermissions } from "@/contexts/PermissionsContext";
 import {
   Tooltip,
@@ -34,17 +32,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-import { Video } from "lucide-react";
-
 const allMenuItems = [
-  { title: "Dashboard", url: "/dashboard", route: "/dashboard", icon: Home },
-  { title: "Accounts", url: "/accounts", route: "/accounts", icon: Building2 },
-  { title: "Contacts", url: "/contacts", route: "/contacts", icon: Users },
-  { title: "Leads", url: "/leads", route: "/leads", icon: UserPlus },
-  { title: "Meetings", url: "/meetings", route: "/meetings", icon: Video },
-  { title: "Deals", url: "/deals", route: "/deals", icon: BarChart3 },
-  { title: "Tasks", url: "/tasks", route: "/tasks", icon: CheckSquare },
-  { title: "Settings", url: "/settings", route: "/settings", icon: Settings },
+  { title: "Dashboard", url: "/", icon: Home },
+  { title: "Accounts", url: "/accounts", icon: Building2 },
+  { title: "Contacts", url: "/contacts", icon: Users },
+  { title: "Deals", url: "/deals", icon: BarChart3 },
+  { title: "Campaigns", url: "/campaigns", icon: Megaphone },
+  { title: "Action Items", url: "/action-items", icon: CheckSquare },
 ];
 
 interface AppSidebarProps {
@@ -59,53 +53,32 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { theme, setTheme } = useThemePreferences();
-  const { hasPageAccess } = usePermissions();
   const currentPath = location.pathname;
+  const { unreadCount } = useNotifications();
+  const { hasPageAccess } = usePermissions();
 
-  // Filter menu items based on cached permissions (synchronous)
-  const menuItems = useMemo(() => {
-    return allMenuItems.filter(item => hasPageAccess(item.route));
-  }, [hasPageAccess]);
+  // Filter menu items based on user's page access
+  const menuItems = allMenuItems.filter(item => hasPageAccess(item.url));
 
-  // Use external state if provided (for fixed mode), otherwise use internal state
   const sidebarOpen = isFixed ? (isOpen ?? false) : isPinned;
 
   const isActive = (path: string) => {
-    if (path === "/dashboard") {
-      return currentPath === "/" || currentPath === "/dashboard";
+    if (path === "/") {
+      return currentPath === "/";
     }
     return currentPath.startsWith(path);
   };
 
-  const handleSignOutClick = () => {
-    setShowSignOutDialog(true);
-  };
-
-  const handleSignOutConfirm = async () => {
-    setShowSignOutDialog(false);
+  const handleSignOut = async () => {
     await signOut();
   };
 
   const handleLogoClick = () => {
-    navigate('/dashboard');
+    navigate('/');
   };
 
   const handleNotificationClick = () => {
     navigate('/notifications');
-  };
-
-  const handleThemeToggle = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-  };
-
-  const getThemeIcon = () => {
-    return theme === 'light' ? Sun : Moon;
-  };
-
-  const getThemeTooltipText = () => {
-    return theme === 'light' ? 'Switch to Dark theme' : 'Switch to Light theme';
   };
 
   const getUserDisplayName = () => {
@@ -126,9 +99,9 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         isFixed ? 'relative' : ''
       }`}
       style={{ 
-        width: sidebarOpen ? '12.5rem' : '4rem',
-        minWidth: sidebarOpen ? '12.5rem' : '4rem',
-        maxWidth: sidebarOpen ? '12.5rem' : '4rem'
+        width: sidebarOpen ? '200px' : '64px',
+        minWidth: sidebarOpen ? '200px' : '64px',
+        maxWidth: sidebarOpen ? '200px' : '64px'
       }}
     >
       {/* Header */}
@@ -166,7 +139,7 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
                 className={`
                   flex items-center h-10 rounded-lg relative transition-colors duration-200 font-medium
                   ${active 
-                    ? 'text-sidebar-primary bg-sidebar-accent' 
+                    ? 'text-sidebar-accent-foreground bg-sidebar-accent' 
                     : 'text-sidebar-foreground hover:text-sidebar-primary hover:bg-sidebar-accent/50'
                   }
                 `}
@@ -174,13 +147,18 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
                 <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
                   <item.icon className="w-5 h-5" />
                 </div>
-                <span 
-                  className={`text-[13px] font-normal transition-all duration-300 overflow-hidden whitespace-nowrap ${
+                <div 
+                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
                     sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
                   }`}
+                  style={{ 
+                    fontFamily: 'Inter, system-ui, sans-serif',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}
                 >
                   {item.title}
-                </span>
+                </div>
               </NavLink>
             );
 
@@ -209,35 +187,81 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
       {/* Bottom Section */}
       <div className="border-t border-sidebar-border p-3 space-y-1">
         {/* Notification Bell */}
-        <div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleNotificationClick}
-                className={`flex items-center h-10 w-full rounded-lg transition-colors font-medium ${
-                  currentPath === '/notifications' 
-                    ? 'text-sidebar-primary bg-sidebar-accent' 
-                    : 'text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50'
-                }`}
-              >
-                <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-                  <Bell className="w-5 h-5" />
-                </div>
-                <span 
-                  className={`text-[13px] font-normal transition-all duration-300 overflow-hidden whitespace-nowrap ${
-                    sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
+        {hasPageAccess('/notifications') && (
+          <div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleNotificationClick}
+                  className={`flex items-center h-10 w-full rounded-lg transition-colors font-medium ${
+                    currentPath === '/notifications' 
+                      ? 'text-sidebar-accent-foreground bg-sidebar-accent' 
+                      : 'text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50'
                   }`}
                 >
-                  Notifications
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
-              <p>Notifications</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
+                  <div className="w-10 h-10 flex items-center justify-center flex-shrink-0 relative">
+                    <Bell className="w-5 h-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute top-1 right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  <div 
+                    className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
+                      sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
+                    }`}
+                    style={{ 
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      fontSize: '14px'
+                    }}
+                  >
+                    Notifications
+                  </div>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
+                <p>Notifications</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
 
+        {/* Settings */}
+        {hasPageAccess('/settings') && (
+          <div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => navigate('/settings')}
+                  className={`flex items-center h-10 w-full rounded-lg transition-colors font-medium ${
+                    currentPath === '/settings' || currentPath.startsWith('/settings')
+                      ? 'text-sidebar-accent-foreground bg-sidebar-accent' 
+                      : 'text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50'
+                  }`}
+                >
+                  <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
+                    <Settings className="w-5 h-5" />
+                  </div>
+                  <div 
+                    className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
+                      sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
+                    }`}
+                    style={{ 
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      fontSize: '14px'
+                    }}
+                  >
+                    Settings
+                  </div>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
+                <p>Settings</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
 
         {/* Pin Toggle Button */}
         <div>
@@ -248,15 +272,19 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
                 className="flex items-center h-10 w-full rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50 font-medium"
               >
                 <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-                  {sidebarOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                  {sidebarOpen ? <Pin className="w-5 h-5" /> : <PinOff className="w-5 h-5" />}
                 </div>
-                <span 
-                  className={`text-[13px] font-normal transition-all duration-300 overflow-hidden whitespace-nowrap ${
+                <div 
+                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
                     sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
                   }`}
+                  style={{ 
+                    fontFamily: 'Inter, system-ui, sans-serif',
+                    fontSize: '14px'
+                  }}
                 >
                   {sidebarOpen ? 'Collapse' : 'Expand'}
-                </span>
+                </div>
               </button>
             </TooltipTrigger>
             <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
@@ -270,19 +298,23 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={handleSignOutClick}
+                onClick={() => setShowSignOutDialog(true)}
                 className="flex items-center h-10 w-full rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50 font-medium"
               >
                 <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
                   <LogOut className="w-5 h-5" />
                 </div>
-                <span 
-                  className={`text-[13px] font-normal transition-all duration-300 overflow-hidden whitespace-nowrap ${
+                <div 
+                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
                     sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
                   }`}
+                  style={{ 
+                    fontFamily: 'Inter, system-ui, sans-serif',
+                    fontSize: '14px'
+                  }}
                 >
                   {getUserDisplayName()}
-                </span>
+                </div>
               </button>
             </TooltipTrigger>
             <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
@@ -298,12 +330,14 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
           <AlertDialogHeader>
             <AlertDialogTitle>Sign Out</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to sign out? You will need to log in again to access your account.
+              Are you sure you want to sign out of your account?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSignOutConfirm}>Sign Out</AlertDialogAction>
+            <AlertDialogAction onClick={handleSignOut}>
+              Sign Out
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -1,17 +1,19 @@
-import { useState, useMemo, useEffect } from "react";
+import { Fragment, useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Deal, DealStage, DEAL_STAGES, STAGE_COLORS } from "@/types/deal";
 import { DealCard } from "./DealCard";
+import { InlineDetailsPanel } from "./kanban/InlineDetailsPanel";
+import { ActionItemModal } from "./ActionItemModal";
+import { useActionItems, ActionItem, CreateActionItemInput } from "@/hooks/useActionItems";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { BulkActionsBar } from "./BulkActionsBar";
 import { DealsAdvancedFilter, AdvancedFilterState } from "./DealsAdvancedFilter";
-import { DeleteConfirmDialog } from "./shared/DeleteConfirmDialog";
-import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
-import { useDealsImportExport } from "@/hooks/useDealsImportExport";
+import { AnimatedStageHeaders } from "./kanban/AnimatedStageHeaders";
+import { cn } from "@/lib/utils";
 
 interface KanbanBoardProps {
   deals: Deal[];
@@ -21,6 +23,7 @@ interface KanbanBoardProps {
   onDeleteDeals: (dealIds: string[]) => void;
   onImportDeals: (deals: Partial<Deal>[]) => void;
   onRefresh: () => void;
+  headerActions?: React.ReactNode;
 }
 
 export const KanbanBoard = ({ 
@@ -30,14 +33,17 @@ export const KanbanBoard = ({
   onCreateDeal, 
   onDeleteDeals, 
   onImportDeals,
-  onRefresh 
+  onRefresh,
+  headerActions 
 }: KanbanBoardProps) => {
   const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
   const [selectedDeals, setSelectedDeals] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [dealToDelete, setDealToDelete] = useState<Deal | null>(null);
+  const [expandedDeal, setExpandedDeal] = useState<{
+    dealId: string;
+    stageIndex: number;
+  } | null>(null);
   const [filters, setFilters] = useState<AdvancedFilterState>({
     stages: [],
     regions: [],
@@ -49,17 +55,108 @@ export const KanbanBoard = ({
     probabilityRange: [0, 100],
   });
   const { toast } = useToast();
+  
+  // Transition state machine for smooth expand/collapse animations
+  type TransitionState = 'idle' | 'expanding' | 'expanded' | 'collapsing';
+  const [transition, setTransition] = useState<TransitionState>('idle');
+  const [expandedDealId, setExpandedDealId] = useState<string | null>(null);
+  const [expandedStage, setExpandedStage] = useState<DealStage | null>(null);
+  const [pendingExpandId, setPendingExpandId] = useState<string | null>(null);
+  const [detailsSpacerHeight, setDetailsSpacerHeight] = useState<number>(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const savedScrollPosition = useRef<{ top: number; left: number }>({ top: 0, left: 0 });
+  const TRANSITION_MS = 300;
+   
+   // Action item modal state
+   const [actionModalOpen, setActionModalOpen] = useState(false);
+   const [editingActionItem, setEditingActionItem] = useState<ActionItem | null>(null);
+   const [actionModalDealId, setActionModalDealId] = useState<string | null>(null);
+   const { createActionItem, updateActionItem } = useActionItems();
+   
+   // Add Detail modal state (triggered from AnimatedStageHeaders "Add" button)
+   const [addDetailOpen, setAddDetailOpen] = useState(false);
 
-  // Get owner IDs for display names
-  const ownerIds = useMemo(() => {
-    return [...new Set(deals.map(d => d.lead_owner).filter(Boolean))] as string[];
-  }, [deals]);
-  const { displayNames } = useUserDisplayNames(ownerIds);
+  // Handle keyboard escape to close expanded panel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && (transition === 'expanded' || transition === 'expanding')) {
+        beginCollapse();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [transition]);
 
-  // Initialize import/export for bulk export
-  const { handleExportSelected } = useDealsImportExport({
-    onRefresh
-  });
+  // Handle transition state changes
+  useEffect(() => {
+    if (transition === 'expanding') {
+      const timer = setTimeout(() => setTransition('expanded'), TRANSITION_MS);
+      return () => clearTimeout(timer);
+    }
+    if (transition === 'collapsing') {
+      const timer = setTimeout(() => {
+        setTransition('idle');
+        setExpandedDealId(null);
+        // Restore scroll position after collapse
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTo({
+            top: savedScrollPosition.current.top,
+            left: savedScrollPosition.current.left,
+            behavior: 'smooth',
+          });
+        }
+        // Handle pending expand (switching deals)
+        if (pendingExpandId) {
+          const nextId = pendingExpandId;
+          setPendingExpandId(null);
+          setTimeout(() => beginExpand(nextId), 50);
+        }
+      }, TRANSITION_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [transition, pendingExpandId]);
+
+  // Begin expand animation
+  const beginExpand = useCallback((dealId: string) => {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) return;
+    
+    // Exit selection mode when expanding
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedDeals(new Set());
+    }
+    // Save scroll position before expanding
+    if (scrollContainerRef.current) {
+      savedScrollPosition.current = {
+        top: scrollContainerRef.current.scrollTop,
+        left: scrollContainerRef.current.scrollLeft,
+      };
+      
+      // Card offset will be measured post-layout in a useEffect
+    }
+    setExpandedDealId(dealId);
+    setExpandedStage(deal.stage as DealStage);
+    setTransition('expanding');
+  }, [selectionMode, deals]);
+
+  // Begin collapse animation
+  const beginCollapse = useCallback(() => {
+    setTransition('collapsing');
+  }, []);
+  
+  // Clear expanded stage after collapse animation completes
+  useEffect(() => {
+    if (transition === 'idle') {
+      // Don't clear immediately - let state settle
+      const timer = setTimeout(() => {
+        if (transition === 'idle') {
+          setExpandedStage(null);
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [transition]);
 
   // Generate available options for multi-select filters
   const availableOptions = useMemo(() => {
@@ -162,12 +259,6 @@ export const KanbanBoard = ({
     try {
       console.log(`Moving deal ${draggableId} to stage ${newStage}`);
       
-      // Show immediate visual feedback
-      toast({
-        title: "Moving Deal...",
-        description: `Moving to ${newStage} stage`,
-      });
-      
       // Create update object with the new stage
       const updates: Partial<Deal> = {
         stage: newStage
@@ -176,8 +267,8 @@ export const KanbanBoard = ({
       await onUpdateDeal(draggableId, updates);
       
       toast({
-        title: "Deal Moved",
-        description: `Successfully moved to ${newStage} stage`,
+        title: "Deal Updated",
+        description: `Deal moved to ${newStage} stage`,
       });
     } catch (error) {
       console.error("Error updating deal stage:", error);
@@ -232,9 +323,7 @@ export const KanbanBoard = ({
   };
 
   const handleBulkExport = () => {
-    if (selectedDeals.size === 0) return;
-    const selectedDealObjects = deals.filter(deal => selectedDeals.has(deal.id));
-    handleExportSelected(deals, Array.from(selectedDeals));
+    // Export logic handled by ImportExportBar
   };
 
   const toggleSelectionMode = () => {
@@ -274,55 +363,259 @@ export const KanbanBoard = ({
 
   const visibleStages = getVisibleStages();
 
+
+  // Layout-safe scroll helper: waits for 3 animation frames before measuring
+  const performLayoutSafeScroll = useCallback(() => {
+    if (!scrollContainerRef.current || !expandedDealId || !expandedStage) return;
+
+    const container = scrollContainerRef.current;
+    
+    // Triple rAF ensures full layout reflow after grid column changes
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!container) return;
+
+          // Measure sticky header height dynamically
+          const stickyHeader = container.querySelector('.sticky.top-0');
+          const stickyHeaderHeight = stickyHeader?.getBoundingClientRect().height || 65;
+
+          // Find the stage column element
+          const stageEl = container.querySelector(`[data-stage-column="${expandedStage}"]`);
+          const cardEl = container.querySelector(`[data-deal-id="${expandedDealId}"]`);
+
+          if (!stageEl) return;
+
+          const paddingMargin = 8;
+
+          // Horizontal: scroll so the expanded stage column is at the left edge
+          let targetScrollLeft = (stageEl as HTMLElement).offsetLeft - paddingMargin;
+
+          // Clamp horizontal scroll to valid range
+          const maxScrollLeft = container.scrollWidth - container.clientWidth;
+          targetScrollLeft = Math.max(0, Math.min(targetScrollLeft, maxScrollLeft));
+
+          // Vertical: scroll so the expanded card is near the top (below sticky header)
+          let targetScrollTop = 0;
+          if (cardEl) {
+            const cardOffsetTop = (cardEl as HTMLElement).offsetTop;
+            targetScrollTop = cardOffsetTop - stickyHeaderHeight - paddingMargin;
+            const maxScrollTop = container.scrollHeight - container.clientHeight;
+            targetScrollTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop));
+          }
+
+
+          container.scrollTo({
+            left: targetScrollLeft,
+            top: targetScrollTop,
+            behavior: 'smooth'
+          });
+        });
+      });
+    });
+  }, [expandedDealId, expandedStage]);
+
+  // Post-layout measurement: measure expanded card's vertical offset within its stage column
+  useEffect(() => {
+    if ((transition === 'expanding' || transition === 'expanded') && expandedDealId && expandedStage && scrollContainerRef.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const container = scrollContainerRef.current;
+            if (!container) return;
+            
+            const cardEl = container.querySelector(`[data-deal-id="${expandedDealId}"]`);
+            const stageCol = container.querySelector(`[data-stage-column="${expandedStage}"]`);
+            
+            if (cardEl && stageCol) {
+              const stageRect = stageCol.getBoundingClientRect();
+              const cardRect = cardEl.getBoundingClientRect();
+              const offset = cardRect.top - stageRect.top;
+              setDetailsSpacerHeight(Math.max(0, offset));
+            }
+          });
+        });
+      });
+    }
+  }, [transition, expandedDealId, expandedStage]);
+
+  // Auto-scroll when expansion starts, with post-transition correction
+  useEffect(() => {
+    if (transition === 'expanding' && expandedStage && scrollContainerRef.current) {
+      // Initial scroll after layout settles
+      performLayoutSafeScroll();
+
+      // Post-transition correction (grid animation may shift elements)
+      const correctionTimer = setTimeout(() => {
+        performLayoutSafeScroll();
+      }, TRANSITION_MS + 50);
+
+      return () => clearTimeout(correctionTimer);
+    }
+  }, [transition, expandedStage, performLayoutSafeScroll]);
+
+   // Handle opening action item modal from expanded panel
+   const handleOpenActionItemModal = (actionItem?: any) => {
+     // Capture the current deal ID at the time of opening
+     setActionModalDealId(expandedDealId);
+     if (actionItem?.id) {
+       // Convert to ActionItem type for editing
+       setEditingActionItem(actionItem as ActionItem);
+     } else {
+       setEditingActionItem(null);
+     }
+     setActionModalOpen(true);
+   };
+ 
+   // Handle saving action item
+   const handleSaveActionItem = async (data: CreateActionItemInput) => {
+     try {
+       if (editingActionItem) {
+         await updateActionItem({ id: editingActionItem.id, ...data });
+         toast({
+           title: "Action item updated",
+           description: "The action item has been updated successfully.",
+         });
+       } else {
+         await createActionItem(data);
+         toast({
+           title: "Action item created",
+           description: "The action item has been created successfully.",
+         });
+       }
+       setActionModalOpen(false);
+       setEditingActionItem(null);
+     } catch (error) {
+       console.error('Error saving action item:', error);
+       toast({
+         title: "Error",
+         description: "Failed to save action item.",
+         variant: "destructive",
+       });
+     }
+   };
+ 
+  // Get grid columns - insert expanded panel column when needed
+  const getGridColumns = () => {
+    const isInlineExpanded = (transition === 'expanded' || transition === 'expanding' || transition === 'collapsing') && expandedStage;
+    
+    if (isInlineExpanded) {
+      const expandedIndex = visibleStages.indexOf(expandedStage);
+      const beforeCount = expandedIndex;
+      const afterCount = visibleStages.length - expandedIndex - 1;
+      
+      // Grid: [before stages] [expanded stage 280px] [details ~50%] [after stages]
+      const parts: string[] = [];
+      if (beforeCount > 0) parts.push(`repeat(${beforeCount}, minmax(240px, 1fr))`);
+      parts.push('minmax(240px, 1fr)'); // expanded stage same as others
+      parts.push('minmax(825px, 3.5fr)'); // details panel
+      if (afterCount > 0) parts.push(`repeat(${afterCount}, minmax(240px, 1fr))`);
+      
+      return parts.join(' ');
+    }
+    return `repeat(${visibleStages.length}, minmax(240px, 1fr))`;
+  };
+
+  // Handle expand deal
+  const handleExpandDeal = (dealId: string) => {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) return;
+
+    // Toggle if same deal, otherwise expand new one
+    if (expandedDealId === dealId) {
+      beginCollapse();
+    } else if (transition === 'expanded') {
+      // Already expanded with different deal - queue the new one
+      setPendingExpandId(dealId);
+      beginCollapse();
+    } else {
+      beginExpand(dealId);
+    }
+  };
+
+  // Get expanded deal object
+  const expandedDealObject = expandedDealId 
+    ? deals.find(d => d.id === expandedDealId) 
+    : null;
+
+  // Inline expansion state
+  const isInlineExpanded = (transition === 'expanded' || transition === 'expanding' || transition === 'collapsing') && expandedStage;
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Fixed top search and controls bar */}
-      <div className="flex-shrink-0 px-4 py-2 bg-background border-b border-transparent">
-        <div className="flex flex-col lg:flex-row gap-2 items-start lg:items-center justify-between">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1 min-w-0">
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />
-              <Input
-                placeholder="Search deals..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-                inputSize="control"
-              />
-            </div>
-            
-            <DealsAdvancedFilter 
-              filters={filters} 
-              onFiltersChange={setFilters}
-              availableRegions={availableOptions.regions}
-              availableLeadOwners={availableOptions.leadOwners}
-              availablePriorities={availableOptions.priorities}
-              availableProbabilities={availableOptions.probabilities}
-              availableHandoffStatuses={availableOptions.handoffStatuses}
+      {/* Header with Search/Filter Bar - above divider */}
+      <div className="flex-shrink-0 border-b border-border bg-background px-6 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px] max-w-[300px]">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <Input
+              placeholder="Search all deal details..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 h-9 transition-all hover:border-primary/50 focus:border-primary w-full"
             />
-            
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Button
-                variant={selectionMode ? "default" : "outline"}
-                size="sm"
-                onClick={toggleSelectionMode}
-                className="hover-scale transition-all whitespace-nowrap h-8 px-3 text-sm"
-              >
-                {selectionMode ? "Exit Selection" : "Select Deals"}
-              </Button>
-              
-              {selectionMode && selectedDeals.size > 0 && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap">
-                  <span className="font-medium">{selectedDeals.size} selected</span>
-                </div>
-              )}
-            </div>
           </div>
+          
+          <DealsAdvancedFilter 
+            filters={filters} 
+            onFiltersChange={setFilters}
+            availableRegions={availableOptions.regions}
+            availableLeadOwners={availableOptions.leadOwners}
+            availablePriorities={availableOptions.priorities}
+            availableProbabilities={availableOptions.probabilities}
+            availableHandoffStatuses={availableOptions.handoffStatuses}
+          />
+
+          {(searchTerm || filters.stages.length > 0 || filters.regions.length > 0 || filters.leadOwners.length > 0 || filters.priorities.length > 0 || filters.probabilities.length > 0 || filters.handoffStatuses.length > 0) && (
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => {
+                setSearchTerm("");
+                setFilters({
+                  stages: [],
+                  regions: [],
+                  leadOwners: [],
+                  priorities: [],
+                  probabilities: [],
+                  handoffStatuses: [],
+                  searchTerm: "",
+                  probabilityRange: [0, 100],
+                });
+              }}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-4 h-4" />
+              Clear All
+            </Button>
+          )}
+          
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              variant={selectionMode ? "default" : "outline"}
+              size="sm"
+              onClick={toggleSelectionMode}
+              className="hover-scale transition-all whitespace-nowrap text-sm h-9 px-3"
+            >
+              {selectionMode ? "Exit Selection" : "Select Deals"}
+            </Button>
+            
+            {selectionMode && selectedDeals.size > 0 && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap">
+                <span className="font-medium">{selectedDeals.size} selected</span>
+              </div>
+            )}
+          </div>
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {headerActions}
         </div>
       </div>
 
-      {/* Scrollable content area with headers and deals together */}
-      <div className="flex-1 min-h-0 overflow-hidden px-3 pb-2">
+      {/* Main Content Area - single inline view */}
+      <div className="flex-1 min-h-0 relative">
         <style>
           {`
             .deals-scrollbar::-webkit-scrollbar {
@@ -341,141 +634,145 @@ export const KanbanBoard = ({
             }
           `}
         </style>
-        
-        {/* Single scrollable container for both headers and content */}
+
+        {/* Single unified view with inline expansion */}
         <div 
-          className="h-full overflow-auto deals-scrollbar"
+          className="absolute inset-0 overflow-auto deals-scrollbar"
+          ref={scrollContainerRef}
           style={{ 
             scrollbarWidth: 'thin',
-            scrollbarColor: 'hsl(var(--border)) transparent'
+            scrollbarColor: 'hsl(var(--border)) transparent',
           }}
         >
-          {/* Stage headers - now inside the scrollable container */}
-          <div className="sticky top-0 bg-background border-b border-transparent z-10 pt-2 pb-2">
-            <div 
-              className="grid gap-2"
-              style={{ 
-                gridTemplateColumns: `repeat(${visibleStages.length}, minmax(240px, 1fr))`
-              }}
-            >
-              {visibleStages.map((stage) => {
-                const stageDeals = getDealsByStage(stage);
-                const selectedInStage = stageDeals.filter(deal => selectedDeals.has(deal.id)).length;
-                const allSelected = selectedInStage === stageDeals.length && stageDeals.length > 0;
-                
-                return (
-                  <div key={stage} className={`p-2 rounded-lg border-2 ${STAGE_COLORS[stage]} transition-all hover:shadow-md`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        {selectionMode && (
-                          <Checkbox
-                            checked={allSelected}
-                            onCheckedChange={(checked) => handleSelectAllInStage(stage, Boolean(checked))}
-                            className="transition-colors flex-shrink-0 h-3 w-3"
-                          />
-                        )}
-                        <h3 className="font-semibold text-sm truncate">{stage}</h3>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-xs font-medium whitespace-nowrap">
-                          {stageDeals.length}
-                          {selectionMode && selectedInStage > 0 && (
-                            <span className="text-primary ml-1">({selectedInStage})</span>
-                          )}
-                        </span>
-                        {stage === 'Lead' && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => onCreateDeal(stage)}
-                            className="hover-scale flex-shrink-0 p-1 h-6 w-6"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          {/* Sticky Stage Headers - scrolls horizontally with content, sticks to top on vertical scroll */}
+          <div className="sticky top-0 z-20 bg-background px-3 py-2 border-b border-border/30">
+            <AnimatedStageHeaders
+              visibleStages={visibleStages}
+              expandedStage={expandedStage}
+              transition={transition}
+              selectionMode={selectionMode}
+              getDealsByStage={getDealsByStage}
+              selectedDeals={selectedDeals}
+              onSelectAllInStage={handleSelectAllInStage}
+              onCreateDeal={onCreateDeal}
+              onAddDetail={() => setAddDetailOpen(true)}
+            />
           </div>
 
-          {/* Deal content - aligned with headers */}
+          {/* Deal content grid with inline details panel */}
           <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
             <div 
-              className="grid gap-2 pt-2"
+              className="grid gap-2 px-3 py-2 transition-all duration-300 ease-out"
               style={{ 
-                gridTemplateColumns: `repeat(${visibleStages.length}, minmax(240px, 1fr))`
+                gridTemplateColumns: getGridColumns()
               }}
             >
-              {visibleStages.map((stage) => {
+              {visibleStages.map((stage, stageIndex) => {
                 const stageDeals = getDealsByStage(stage);
+                const isExpandedStage = stage === expandedStage;
                 
                 return (
-                  <div key={stage} className="flex flex-col min-w-0">
-                    <Droppable droppableId={stage}>
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          className={`flex-1 space-y-1.5 p-1.5 rounded-lg transition-all min-h-[400px] ${
-                            snapshot.isDraggingOver ? 'bg-muted/50 shadow-inner' : ''
-                          }`}
-                        >
-                          {stageDeals.map((deal, index) => (
-                            <Draggable 
-                              key={deal.id} 
-                              draggableId={deal.id} 
-                              index={index}
-                              isDragDisabled={selectionMode}
-                            >
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...(!selectionMode ? provided.dragHandleProps : {})}
-                                  className="relative group"
+                  <Fragment key={stage}>
+                    {/* Stage column - add data attribute for DOM measurement */}
+                    <div 
+                      className="flex flex-col min-w-0"
+                      data-stage-column={stage}
+                    >
+                      <Droppable droppableId={stage} isDropDisabled={!!isInlineExpanded}>
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className={cn(
+                              'flex-1 space-y-1.5 p-1.5 rounded-lg transition-all min-h-[400px]',
+                              snapshot.isDraggingOver && 'bg-muted/50 shadow-inner'
+                            )}
+                          >
+                            {stageDeals.map((deal, index) => {
+                              const isExpandedDeal = deal.id === expandedDealId;
+                              const shouldDim = isInlineExpanded && !isExpandedDeal;
+                              
+                              return (
+                                <Draggable 
+                                  key={deal.id} 
+                                  draggableId={deal.id} 
+                                  index={index}
+                                  isDragDisabled={selectionMode || !!isInlineExpanded}
                                 >
-                                  {selectionMode && (
-                                    <div className="absolute top-1.5 left-1.5 z-10">
-                                      <Checkbox
-                                        checked={selectedDeals.has(deal.id)}
-                                        onCheckedChange={(checked) => handleSelectDeal(deal.id, Boolean(checked))}
-                                        className="bg-background border-2 transition-colors h-3 w-3"
-                                        onClick={(e) => e.stopPropagation()}
+                                  {(provided, snapshot) => (
+                                    <div
+                                      ref={provided.innerRef}
+                                      {...provided.draggableProps}
+                                      {...(!selectionMode && !isInlineExpanded ? provided.dragHandleProps : {})}
+                                      className="relative group"
+                                      data-deal-id={deal.id}
+                                    >
+                                      {selectionMode && (
+                                        <div className="absolute top-1.5 left-1.5 z-10">
+                                          <Checkbox
+                                            checked={selectedDeals.has(deal.id)}
+                                            onCheckedChange={(checked) => handleSelectDeal(deal.id, Boolean(checked))}
+                                            className="bg-background border-2 transition-colors h-3 w-3"
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                        </div>
+                                      )}
+                                      <DealCard
+                                        deal={deal}
+                                        onClick={(e) => {
+                                          if (selectionMode) {
+                                            handleSelectDeal(deal.id, !selectedDeals.has(deal.id), e);
+                                          } else if (isInlineExpanded && !isExpandedDeal) {
+                                            // Switch to this deal when clicking a dimmed card
+                                            handleExpandDeal(deal.id);
+                                          } else {
+                                            onDealClick(deal);
+                                          }
+                                        }}
+                                        isDragging={snapshot.isDragging}
+                                        isSelected={selectedDeals.has(deal.id)}
+                                        isExpanded={isExpandedDeal}
+                                        isDimmed={shouldDim}
+                                        selectionMode={selectionMode}
+                                        onStageChange={handleDealCardAction}
+                                        onExpand={handleExpandDeal}
                                       />
                                     </div>
                                   )}
-                                  <DealCard
-                                    deal={deal}
-                                    onClick={(e) => {
-                                      if (selectionMode) {
-                                        handleSelectDeal(deal.id, !selectedDeals.has(deal.id), e);
-                                      } else {
-                                        onDealClick(deal);
-                                      }
-                                    }}
-                                    isDragging={snapshot.isDragging}
-                                    isSelected={selectedDeals.has(deal.id)}
-                                    selectionMode={selectionMode}
-                                    displayNames={displayNames}
-                                    onDelete={(dealId) => {
-                                      const targetDeal = deals.find(d => d.id === dealId);
-                                      setDealToDelete(targetDeal || null);
-                                      setDeleteDialogOpen(true);
-                                    }}
-                                    onStageChange={handleDealCardAction}
-                                  />
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
-                        </div>
-                      )}
-                    </Droppable>
-                  </div>
+                                </Draggable>
+                              );
+                            })}
+                            {provided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    </div>
+                    
+                    {/* Inline Details Panel - aligned with selected card via spacer */}
+                    {isExpandedStage && isInlineExpanded && expandedDealObject && (
+                      <div 
+                        data-details-panel="true"
+                        className="flex flex-col"
+                        style={{ 
+                          minHeight: 0,
+                          height: 'fit-content',
+                        }}
+                      >
+                        {/* Spacer to align details panel with expanded card */}
+                        {detailsSpacerHeight > 0 && (
+                          <div style={{ height: `${detailsSpacerHeight}px`, flexShrink: 0 }} />
+                        )}
+                        <InlineDetailsPanel
+                          deal={expandedDealObject}
+                          transition={transition}
+                          onClose={beginCollapse}
+                          onOpenActionItemModal={handleOpenActionItemModal}
+                          addDetailOpen={addDetailOpen}
+                          onAddDetailOpenChange={setAddDetailOpen}
+                        />
+                      </div>
+                    )}
+                  </Fragment>
                 );
               })}
             </div>
@@ -492,24 +789,21 @@ export const KanbanBoard = ({
           onClearSelection={() => setSelectedDeals(new Set())}
         />
       </div>
-
-      {/* Delete confirmation dialog */}
-      <DeleteConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        onConfirm={() => {
-          if (dealToDelete) {
-            onDeleteDeals([dealToDelete.id]);
-            toast({
-              title: "Deal deleted",
-              description: `Successfully deleted ${dealToDelete.project_name || 'deal'}`,
-            });
-            setDealToDelete(null);
+       
+      {/* Action Item Modal */}
+      <ActionItemModal
+        open={actionModalOpen}
+        onOpenChange={(open) => {
+          setActionModalOpen(open);
+          if (!open) {
+            setEditingActionItem(null);
+            setActionModalDealId(null);
           }
         }}
-        title="Delete Deal"
-        itemName={dealToDelete?.project_name || 'this deal'}
-        itemType="deal"
+        actionItem={editingActionItem}
+        onSave={handleSaveActionItem}
+        defaultModuleType="deals"
+        defaultModuleId={actionModalDealId || expandedDealId || undefined}
       />
     </div>
   );

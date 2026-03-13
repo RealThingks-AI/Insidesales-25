@@ -11,10 +11,6 @@ export interface Deal {
   deal_name: string;
   stage: DealStage;
   
-  // Linked entities
-  account_id?: string | null;
-  contact_id?: string | null;
-  
   // Lead stage fields
   project_name?: string;
   customer_name?: string;
@@ -69,19 +65,36 @@ export interface Deal {
   
   // Dropped stage fields
   drop_reason?: string;
+
+  // Stakeholder contacts
+  budget_owner_contact_id?: string;
+  champion_contact_id?: string;
+  objector_contact_id?: string;
+  influencer_contact_id?: string;
 }
 
 export const DEAL_STAGES: DealStage[] = ['Lead', 'Discussions', 'Qualified', 'RFQ', 'Offered', 'Won', 'Lost', 'Dropped'];
 
 export const STAGE_COLORS = {
-  Lead: 'bg-stage-lead text-stage-lead-foreground border-stage-lead-foreground/20',
-  Discussions: 'bg-stage-discussions text-stage-discussions-foreground border-stage-discussions-foreground/20',
-  Qualified: 'bg-stage-qualified text-stage-qualified-foreground border-stage-qualified-foreground/20',
-  RFQ: 'bg-stage-rfq text-stage-rfq-foreground border-stage-rfq-foreground/20',
-  Offered: 'bg-stage-offered text-stage-offered-foreground border-stage-offered-foreground/20',
-  Won: 'bg-stage-won text-stage-won-foreground border-stage-won-foreground/20',
-  Lost: 'bg-stage-lost text-stage-lost-foreground border-stage-lost-foreground/20',
-  Dropped: 'bg-stage-dropped text-stage-dropped-foreground border-stage-dropped-foreground/20',
+  Lead: 'text-stage-lead-foreground',
+  Discussions: 'text-stage-discussions-foreground',
+  Qualified: 'text-stage-qualified-foreground',
+  RFQ: 'text-stage-rfq-foreground',
+  Offered: 'text-stage-offered-foreground',
+  Won: 'text-stage-won-foreground',
+  Lost: 'text-stage-lost-foreground',
+  Dropped: 'text-stage-dropped-foreground',
+};
+
+export const STAGE_BG_COLORS: Record<DealStage, string> = {
+  Lead: 'bg-stage-lead border-stage-lead-foreground/30',
+  Discussions: 'bg-stage-discussions border-stage-discussions-foreground/30',
+  Qualified: 'bg-stage-qualified border-stage-qualified-foreground/30',
+  RFQ: 'bg-stage-rfq border-stage-rfq-foreground/30',
+  Offered: 'bg-stage-offered border-stage-offered-foreground/30',
+  Won: 'bg-stage-won border-stage-won-foreground/30',
+  Lost: 'bg-stage-lost border-stage-lost-foreground/30',
+  Dropped: 'bg-stage-dropped border-stage-dropped-foreground/30',
 };
 
 export const getStageIndex = (stage: DealStage): number => {

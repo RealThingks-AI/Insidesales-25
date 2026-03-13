@@ -1,59 +1,3 @@
-import { format } from 'date-fns';
-
-// Global date format configuration - DD/MM/YYYY
-export const GLOBAL_DATE_FORMAT = 'dd/MM/yyyy';
-export const GLOBAL_DATE_TIME_FORMAT = 'dd/MM/yyyy HH:mm';
-export const GLOBAL_DATE_TIME_FULL_FORMAT = 'dd/MM/yyyy HH:mm:ss';
-export const GLOBAL_SHORT_DATE_FORMAT = 'dd/MM';
-export const GLOBAL_MONTH_YEAR_FORMAT = 'MMMM yyyy';
-
-// Display utility - formats dates for UI display in DD/MM/YYYY
-export const formatDisplayDate = (date: Date | string | null | undefined): string => {
-  if (!date) return '-';
-  try {
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-    if (isNaN(dateObj.getTime())) return '-';
-    return format(dateObj, GLOBAL_DATE_FORMAT);
-  } catch {
-    return '-';
-  }
-};
-
-// Display utility - formats datetime for UI display in DD/MM/YYYY HH:mm
-export const formatDisplayDateTime = (date: Date | string | null | undefined): string => {
-  if (!date) return '-';
-  try {
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-    if (isNaN(dateObj.getTime())) return '-';
-    return format(dateObj, GLOBAL_DATE_TIME_FORMAT);
-  } catch {
-    return '-';
-  }
-};
-
-// Display utility - formats datetime with seconds for UI display
-export const formatDisplayDateTimeFull = (date: Date | string | null | undefined): string => {
-  if (!date) return '-';
-  try {
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-    if (isNaN(dateObj.getTime())) return '-';
-    return format(dateObj, GLOBAL_DATE_TIME_FULL_FORMAT);
-  } catch {
-    return '-';
-  }
-};
-
-// Display utility - short date format DD/MM
-export const formatDisplayShortDate = (date: Date | string | null | undefined): string => {
-  if (!date) return '-';
-  try {
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-    if (isNaN(dateObj.getTime())) return '-';
-    return format(dateObj, GLOBAL_SHORT_DATE_FORMAT);
-  } catch {
-    return '-';
-  }
-};
 
 // Centralized date conversion utilities for import/export
 
@@ -101,12 +45,25 @@ export class DateFormatUtils {
   }
   
   // Convert date from multiple formats to YYYY-MM-DD for database import
+  // Supports Zoho CRM format: DD-MM-YY HH:mm
   static convertDateForImport(dateValue: string): string | null {
     if (!dateValue || dateValue.trim() === '') return null;
     
     const trimmedValue = dateValue.trim();
     
     try {
+      // Handle Zoho CRM format: DD-MM-YY HH:mm (e.g., "08-05-20 14:52")
+      const zohoFormatMatch = trimmedValue.match(/^(\d{2})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
+      if (zohoFormatMatch) {
+        const [, day, month, year, hours, minutes] = zohoFormatMatch;
+        // Assume 20xx for 2-digit years
+        const fullYear = 2000 + parseInt(year);
+        const parsedDate = new Date(fullYear, parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+        if (!isNaN(parsedDate.getTime())) {
+          return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hours}:${minutes}:00`;
+        }
+      }
+
       // Handle already correct YYYY-MM-DD format
       const yyyymmddMatch = trimmedValue.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
       if (yyyymmddMatch) {
@@ -127,36 +84,7 @@ export class DateFormatUtils {
         }
       }
 
-      // Handle DD-MM-YY format (2-digit year)
-      const ddmmyyMatch = trimmedValue.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
-      if (ddmmyyMatch) {
-        const [, day, month, shortYear] = ddmmyyMatch;
-        const fullYear = parseInt(shortYear) > 50 ? 1900 + parseInt(shortYear) : 2000 + parseInt(shortYear);
-        const parsedDate = new Date(fullYear, parseInt(month) - 1, parseInt(day));
-        if (!isNaN(parsedDate.getTime())) {
-          return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-        }
-      }
-
-      // Handle DD-MM-YY HH:mm format (2-digit year with time)
-      const ddmmyyTimeMatch = trimmedValue.match(/^(\d{1,2})-(\d{1,2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
-      if (ddmmyyTimeMatch) {
-        const [, day, month, shortYear, hours, minutes] = ddmmyyTimeMatch;
-        const fullYear = parseInt(shortYear) > 50 ? 1900 + parseInt(shortYear) : 2000 + parseInt(shortYear);
-        return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hours.padStart(2, '0')}:${minutes}:00`;
-      }
-
-      // Handle DD/MM/YYYY format (primary format)
-      const ddmmyyyySlashMatch = trimmedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (ddmmyyyySlashMatch) {
-        const [, day, month, year] = ddmmyyyySlashMatch;
-        const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-        if (!isNaN(parsedDate.getTime())) {
-          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-        }
-      }
-
-      // Handle MM/DD/YYYY format (legacy support)
+      // Handle MM/DD/YYYY format
       const mmddyyyyMatch = trimmedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (mmddyyyyMatch) {
         const [, month, day, year] = mmddyyyyMatch;
@@ -216,7 +144,7 @@ export class DateFormatUtils {
       console.warn(`DateFormatUtils: Error parsing date: ${trimmedValue}`, error);
     }
     
-    console.warn(`DateFormatUtils: Invalid date format: ${trimmedValue}. Please use DD/MM/YYYY format.`);
+    console.warn(`DateFormatUtils: Invalid date format: ${trimmedValue}. Please use YYYY-MM-DD format.`);
     return null;
   }
   
@@ -229,7 +157,8 @@ export class DateFormatUtils {
     ];
     
     const datetimeFields = [
-      'created_at', 'modified_at', 'created_time', 'modified_time'
+      'created_at', 'modified_at', 'created_time', 'modified_time',
+      'last_activity_time' // Zoho CRM field
     ];
     
     if (dateFields.includes(fieldName)) return 'date';

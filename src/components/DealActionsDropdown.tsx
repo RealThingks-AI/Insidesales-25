@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import {
@@ -6,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Upload, Download, Columns } from "lucide-react";
+import { Settings, Upload, Download, Columns } from "lucide-react";
 import { Deal } from "@/types/deal";
 import { useDealsImportExport } from "@/hooks/useDealsImportExport";
 
@@ -60,22 +61,41 @@ export const DealActionsDropdown = ({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
-          Actions
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-9 w-9"
+        >
+          <Settings className="w-4 h-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="bg-popover border z-50">
-        <DropdownMenuItem onClick={handleImportClick}>
-          <Upload className="w-4 h-4 mr-2" />
+      <DropdownMenuContent 
+        align="end" 
+        className="w-56 bg-popover border shadow-md rounded-md p-1"
+        sideOffset={4}
+      >
+        <DropdownMenuItem 
+          className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm"
+          onClick={handleImportClick}
+        >
+          <Upload className="w-4 h-4" />
           Import
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleExportClick}>
-          <Download className="w-4 h-4 mr-2" />
-          Export {selectedDeals.length > 0 ? `(${selectedDeals.length})` : 'All'}
+        
+        <DropdownMenuItem 
+          className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm"
+          onClick={handleExportClick}
+        >
+          <Download className="w-4 h-4" />
+          Export {selectedDeals.length > 0 ? `(${selectedDeals.length} selected)` : 'All'}
         </DropdownMenuItem>
+        
         {showColumns && onColumnCustomize && (
-          <DropdownMenuItem onClick={onColumnCustomize}>
-            <Columns className="w-4 h-4 mr-2" />
+          <DropdownMenuItem 
+            className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm"
+            onClick={onColumnCustomize}
+          >
+            <Columns className="w-4 h-4" />
             Columns
           </DropdownMenuItem>
         )}

@@ -1,29 +1,25 @@
-import { ContactTable, ContactTableRef } from "@/components/ContactTable";
+import { ContactTable } from "@/components/ContactTable";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Trash2, Upload, Download, Mail, Plus } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useState, useRef } from "react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import { Settings, MoreVertical, Upload, Plus, Trash2, Download, Search } from "lucide-react";
+import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useSimpleContactsImportExport } from "@/hooks/useSimpleContactsImportExport";
-import { BulkEmailModal, BulkEmailRecipient } from "@/components/BulkEmailModal";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useCRUDAudit } from "@/hooks/useCRUDAudit";
 
 const Contacts = () => {
   const { toast } = useToast();
+  const { logBulkDelete } = useCRUDAudit();
   const [showColumnCustomizer, setShowColumnCustomizer] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [showBulkEmailModal, setShowBulkEmailModal] = useState(false);
-  const [bulkEmailRecipients, setBulkEmailRecipients] = useState<BulkEmailRecipient[]>([]);
-  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // Ref to call bulk delete from ContactTable
-  const contactTableRef = useRef<ContactTableRef>(null);
 
   const onRefresh = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -43,136 +39,97 @@ const Contacts = () => {
       await handleImport(file);
       event.target.value = '';
     } catch (error: any) {
-      console.error('Import error:', error);
+      console.error('Contacts page: Import error caught:', error);
       event.target.value = '';
     }
   };
 
-  const handleBulkDeleteClick = () => {
+  const handleBulkDelete = async () => {
     if (selectedContacts.length === 0) return;
-    setShowBulkDeleteDialog(true);
-  };
+    setShowDeleteConfirm(false);
+    try {
+      const { error } = await supabase.from('contacts').delete().in('id', selectedContacts);
+      if (error) throw error;
 
-  // Execute bulk delete via ContactTable ref
-  const executeBulkDelete = async () => {
-    if (contactTableRef.current) {
-      await contactTableRef.current.handleBulkDelete();
-    }
-    setShowBulkDeleteDialog(false);
-  };
-
-  const handleBulkEmailClick = async () => {
-    if (selectedContacts.length === 0) return;
-    
-    const { data: contacts, error } = await supabase
-      .from('contacts')
-      .select('id, contact_name, email')
-      .in('id', selectedContacts);
-    
-    if (error) {
+      await logBulkDelete('contacts', selectedContacts.length, selectedContacts);
+      toast({
+        title: "Success",
+        description: `${selectedContacts.length} contacts deleted successfully`
+      });
+      setSelectedContacts([]);
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to fetch contact details",
-        variant: "destructive",
+        description: "Failed to delete contacts",
+        variant: "destructive"
       });
-      return;
     }
-
-    const recipients: BulkEmailRecipient[] = (contacts || []).map(contact => ({
-      id: contact.id,
-      name: contact.contact_name,
-      email: contact.email || undefined,
-      type: 'contact' as const,
-    }));
-
-    setBulkEmailRecipients(recipients);
-    setShowBulkEmailModal(true);
   };
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
-      {/* Fixed Header */}
-      <div className="flex-shrink-0 bg-background">
-        <div className="px-6 h-16 flex items-center border-b w-full">
-          <div className="flex items-center justify-between w-full">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl text-foreground font-semibold">Contacts</h1>
-            </div>
-            <div className="flex items-center gap-3">
-              {selectedContacts.length > 0 && (
-                <>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="outline" size="icon" onClick={handleBulkEmailClick}>
-                          <Mail className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Send Email to Selected ({selectedContacts.length})</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="outline" size="icon" onClick={handleBulkDeleteClick}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Delete Selected ({selectedContacts.length})</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </>
-              )}
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header - fixed height matching sidebar */}
+      <div className="flex-shrink-0 h-16 border-b bg-background px-6 flex items-center">
+        <div className="flex items-center justify-between w-full">
+          <h1 className="text-2xl font-semibold text-foreground">Contacts</h1>
+          <Button onClick={() => setShowModal(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Contact
+          </Button>
+        </div>
+      </div>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" disabled={isImporting}>
-                    Actions
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => setShowColumnCustomizer(true)}>
-                    <Settings className="w-4 h-4 mr-2" />
-                    Columns
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleImportClick} disabled={isImporting}>
-                    <Upload className="w-4 h-4 mr-2" />
-                    {isImporting ? 'Importing...' : 'Import CSV'}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExport}>
-                    <Download className="w-4 h-4 mr-2" />
-                    Export CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleBulkEmailClick} disabled={selectedContacts.length === 0}>
-                    <Mail className="w-4 h-4 mr-2" />
-                    Send Bulk Email ({selectedContacts.length})
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={handleBulkDeleteClick} 
-                    disabled={selectedContacts.length === 0}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Selected ({selectedContacts.length})
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5">
-                <Plus className="w-4 h-4" />
-                Add Contact
-              </Button>
-            </div>
+      {/* Filter Bar - consistent padding and styling */}
+      <div className="flex-shrink-0 border-b bg-muted/30 px-6 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search input */}
+          <div className="relative flex-1 min-w-[200px] max-w-[300px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search contacts..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="pl-9" 
+            />
           </div>
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Actions dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" disabled={isImporting}>
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setShowColumnCustomizer(true)}>
+                <Settings className="w-4 h-4 mr-2" />
+                Columns
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleImportClick} disabled={isImporting}>
+                <Upload className="w-4 h-4 mr-2" />
+                Import CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExport}>
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </DropdownMenuItem>
+              {selectedContacts.length > 0 && (
+                <DropdownMenuItem onClick={() => setShowDeleteConfirm(true)} className="text-destructive focus:text-destructive">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Selected ({selectedContacts.length})
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
       {/* Hidden file input for CSV import */}
-      <Input 
+      <input 
         ref={fileInputRef} 
         type="file" 
         accept=".csv" 
@@ -181,10 +138,27 @@ const Contacts = () => {
         disabled={isImporting} 
       />
 
-      {/* Main Content Area */}
-      <div className="flex-1 min-h-0 flex flex-col px-4 pt-2 pb-4">
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedContacts.length} Contact{selectedContacts.length !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The selected contacts will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Content Area */}
+      <div className="flex-1 min-h-0 overflow-hidden">
         <ContactTable 
-          ref={contactTableRef}
           showColumnCustomizer={showColumnCustomizer} 
           setShowColumnCustomizer={setShowColumnCustomizer} 
           showModal={showModal} 
@@ -192,41 +166,10 @@ const Contacts = () => {
           selectedContacts={selectedContacts} 
           setSelectedContacts={setSelectedContacts} 
           refreshTrigger={refreshTrigger}
-          onBulkDeleteComplete={() => {
-            setSelectedContacts([]);
-            setRefreshTrigger(prev => prev + 1);
-            setShowBulkDeleteDialog(false);
-          }}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
         />
       </div>
-
-      {/* Bulk Delete Confirmation Dialog */}
-      <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedContacts.length} contacts?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the selected contacts.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={executeBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Bulk Email Modal */}
-      <BulkEmailModal
-        open={showBulkEmailModal}
-        onOpenChange={setShowBulkEmailModal}
-        recipients={bulkEmailRecipients}
-        onEmailsSent={() => {
-          setSelectedContacts([]);
-        }}
-      />
     </div>
   );
 };

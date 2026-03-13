@@ -8,6 +8,95 @@ export const createHeaderMapper = (tableName: string) => {
     
     console.log(`Mapping header: "${trimmedHeader}"`);
     
+    // For accounts, create specific field mappings (Zoho CRM compatible)
+    if (tableName === 'accounts') {
+      // Direct field matches first (case-insensitive)
+      const directMatch = config.allowedColumns.find(col => 
+        col.toLowerCase() === trimmedHeader.toLowerCase()
+      );
+      if (directMatch) {
+        console.log(`Direct field match found: ${trimmedHeader} -> ${directMatch}`);
+        return directMatch;
+      }
+      
+      // Account-specific field mappings (Zoho CRM compatible)
+      const accountMappings: Record<string, string> = {
+        'id': 'id',
+        'record id': '__skip__', // Zoho internal ID - skip
+        'account owner.id': '__skip__', // Zoho internal ID - skip
+        'created by.id': '__skip__', // Zoho internal ID - skip
+        'modified by.id': '__skip__', // Zoho internal ID - skip
+        'change log time': '__skip__', // Not needed - skip
+        'account_name': 'account_name',
+        'account name': 'account_name',
+        'name': 'account_name',
+        'company name': 'account_name',
+        'company': 'account_name',
+        // 'email' removed - accounts table has no email column
+        'phone': 'phone',
+        'phone number': 'phone',
+        'telephone': 'phone',
+        'website': 'website',
+        'website url': 'website',
+        'web': 'website',
+        'industry': 'industry',
+        'sector': 'industry',
+        'company_type': 'company_type',
+        'company type': 'company_type',
+        'type': 'company_type',
+        'account type': 'company_type',
+        'country': 'country',
+        'billing country': 'country',
+        'nation': 'country',
+        'region': 'region',
+        'territory': 'region',
+        'status': 'status',
+        'account status': 'status',
+        'description': 'description',
+        'notes': 'description',
+        'comments': 'description',
+        'currency': 'currency',
+        // User reference fields
+        'account_owner': 'account_owner',
+        'account owner': 'account_owner',
+        'owner': 'account_owner',
+        'created_by': 'created_by',
+        'created by': 'created_by',
+        'creator': 'created_by',
+        'modified_by': 'modified_by',
+        'modified by': 'modified_by',
+        'modifier': 'modified_by',
+        // Timestamp fields
+        'created_time': 'created_time',
+        'created time': 'created_time',
+        'created at': 'created_time',
+        'creation date': 'created_time',
+        'modified_time': 'modified_time',
+        'modified time': 'modified_time',
+        'modified at': 'modified_time',
+        'modification date': 'modified_time',
+        'last_activity_time': 'last_activity_time',
+        'last activity time': 'last_activity_time',
+        'last activity': 'last_activity_time'
+      };
+      
+      // Check for mapping (case-insensitive)
+      const lowerHeader = trimmedHeader.toLowerCase();
+      for (const [key, value] of Object.entries(accountMappings)) {
+        if (key.toLowerCase() === lowerHeader) {
+          if (value === '__skip__') {
+            console.log(`Skipping Zoho internal field: ${trimmedHeader}`);
+            return null;
+          }
+          console.log(`Account mapping found: ${trimmedHeader} -> ${value}`);
+          return value;
+        }
+      }
+      
+      console.log(`No mapping found for accounts field: ${trimmedHeader}`);
+      return null;
+    }
+    
     // For contacts, create specific field mappings
     if (tableName === 'contacts' || tableName === 'contacts_module') {
       // Direct field matches first (case-insensitive)
@@ -20,11 +109,18 @@ export const createHeaderMapper = (tableName: string) => {
       }
       
       // Contact-specific field mappings (case-insensitive)
-      // Removed: website, industry, region, country, segment
+      // Includes Zoho CRM field mappings
+      // Contact-specific field mappings (case-insensitive)
+      // Includes Zoho CRM field mappings with user reference field support
       const contactMappings: Record<string, string> = {
         'id': 'id',
         'contact id': 'id',
         'contact_id': 'id',
+        'record id': '__skip__', // Zoho internal ID - skip
+        'contact owner.id': '__skip__', // Zoho internal ID - skip
+        'created by.id': '__skip__', // Zoho internal ID - skip
+        'modified by.id': '__skip__', // Zoho internal ID - skip
+        'change log time': '__skip__', // Not needed - skip
         'contact_name': 'contact_name',
         'contact name': 'contact_name',
         'name': 'contact_name',
@@ -34,7 +130,7 @@ export const createHeaderMapper = (tableName: string) => {
         'company': 'company_name',
         'organization': 'company_name',
         'position': 'position',
-        'title': 'position',
+        'title': 'position', // Zoho uses 'Title' for position
         'job title': 'position',
         'email': 'email',
         'email address': 'email',
@@ -45,14 +141,23 @@ export const createHeaderMapper = (tableName: string) => {
         'linkedin': 'linkedin',
         'linkedin url': 'linkedin',
         'linkedin profile': 'linkedin',
+        'website': 'website',
+        'website url': 'website',
+        'web': 'website',
         'contact_source': 'contact_source',
         'contact source': 'contact_source',
         'source': 'contact_source',
-        'lead source': 'contact_source',
+        'lead source': 'contact_source', // Zoho uses 'Lead Source' for contact source
+        'industry': 'industry',
+        'sector': 'industry',
+        'region': 'region',
+        'country': 'region',
+        'nation': 'region',
         'description': 'description',
         'notes': 'description',
         'comments': 'description',
         'remarks': 'description',
+        // User reference fields - these will be resolved from text names to UUIDs
         'contact_owner': 'contact_owner',
         'contact owner': 'contact_owner',
         'owner': 'contact_owner',
@@ -62,6 +167,7 @@ export const createHeaderMapper = (tableName: string) => {
         'modified_by': 'modified_by',
         'modified by': 'modified_by',
         'modifier': 'modified_by',
+        // Timestamp fields
         'created_time': 'created_time',
         'created time': 'created_time',
         'created at': 'created_time',
@@ -69,13 +175,21 @@ export const createHeaderMapper = (tableName: string) => {
         'modified_time': 'modified_time',
         'modified time': 'modified_time',
         'modified at': 'modified_time',
-        'modification date': 'modified_time'
+        'modification date': 'modified_time',
+        'last_activity_time': 'last_activity_time',
+        'last activity time': 'last_activity_time', // Zoho field
+        'last activity': 'last_activity_time'
       };
       
       // Check for mapping (case-insensitive)
       const lowerHeader = trimmedHeader.toLowerCase();
       for (const [key, value] of Object.entries(contactMappings)) {
         if (key.toLowerCase() === lowerHeader) {
+          // Skip fields marked for skipping
+          if (value === '__skip__') {
+            console.log(`Skipping Zoho internal field: ${trimmedHeader}`);
+            return null;
+          }
           console.log(`Contact mapping found: ${trimmedHeader} -> ${value}`);
           return value;
         }

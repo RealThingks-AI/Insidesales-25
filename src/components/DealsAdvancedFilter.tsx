@@ -163,7 +163,7 @@ export const DealsAdvancedFilter = ({
     <div className="relative" ref={filterRef}>
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="relative h-8 px-3 text-sm">
+          <Button variant="outline" size="sm" className="relative h-9">
             <Filter className="w-4 h-4 mr-2" />
             Filter
             {activeFiltersCount > 0 && (
@@ -270,7 +270,7 @@ export const DealsAdvancedFilter = ({
                   value={localFilters.searchTerm}
                   onChange={(e) => updateLocalFilter("searchTerm", e.target.value)}
                   placeholder="Search deals..."
-                  inputSize="control"
+                  className="w-full"
                 />
               </div>
 

@@ -1,168 +1,187 @@
-import AccountTable from "@/components/AccountTable";
+import { useState, useRef, useEffect } from "react";
+import { Plus, Upload, Download, Columns, MoreVertical, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Settings, Trash2, Upload, Download, Plus } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useState, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { AccountTable } from "@/components/AccountTable";
+import { useSimpleAccountsImportExport } from "@/hooks/useSimpleAccountsImportExport";
+import { supabase } from "@/integrations/supabase/client";
+import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 import { useToast } from "@/hooks/use-toast";
-import { useAccountsImportExport } from "@/hooks/useAccountsImportExport";
-import { AccountDeleteConfirmDialog } from "@/components/AccountDeleteConfirmDialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-
-// Export interface for AccountTable ref
-export interface AccountTableRef {
-  handleBulkDelete: () => Promise<void>;
-}
+import { useCRUDAudit } from "@/hooks/useCRUDAudit";
 
 const Accounts = () => {
-  const [searchParams] = useSearchParams();
-  const initialStatus = searchParams.get('status') || 'all';
-  const { toast } = useToast();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [ownerIds, setOwnerIds] = useState<string[]>([]);
   const [showColumnCustomizer, setShowColumnCustomizer] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // Ref to call bulk delete from AccountTable
-  const accountTableRef = useRef<AccountTableRef>(null);
+  const { toast } = useToast();
+  const { logBulkDelete } = useCRUDAudit();
 
-  const {
-    handleImport,
-    handleExport,
-    isImporting
-  } = useAccountsImportExport(() => {
+  const { handleImport, handleExport, isImporting } = useSimpleAccountsImportExport(() => {
     setRefreshTrigger(prev => prev + 1);
   });
 
-  const handleBulkDeleteClick = () => {
-    if (selectedAccounts.length === 0) return;
-    setShowBulkDeleteDialog(true);
-  };
+  // Fetch distinct owners
+  useEffect(() => {
+    const fetchOwners = async () => {
+      const { data } = await supabase.from('accounts').select('account_owner');
+      if (data) {
+        const unique = [...new Set(data.map(d => d.account_owner).filter(Boolean))] as string[];
+        setOwnerIds(unique);
+      }
+    };
+    fetchOwners();
+  }, [refreshTrigger]);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const { displayNames } = useUserDisplayNames(ownerIds);
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.type === 'text/csv') {
-      handleImport(file);
-    } else {
-      toast({
-        title: "Error",
-        description: "Please select a valid CSV file",
-        variant: "destructive"
-      });
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (file) { handleImport(file); event.target.value = ''; }
   };
 
-  // Execute bulk delete via AccountTable ref
-  const executeBulkDelete = async () => {
-    if (accountTableRef.current) {
-      await accountTableRef.current.handleBulkDelete();
+  const handleBulkDelete = async () => {
+    if (selectedAccounts.length === 0) return;
+    setShowDeleteConfirm(false);
+    try {
+      const { error } = await supabase.from('accounts').delete().in('id', selectedAccounts);
+      if (error) throw error;
+      await logBulkDelete('accounts', selectedAccounts.length, selectedAccounts);
+      toast({ title: "Success", description: `${selectedAccounts.length} accounts deleted` });
+      setSelectedAccounts([]);
+      setRefreshTrigger(prev => prev + 1);
+    } catch {
+      toast({ title: "Error", description: "Failed to delete accounts", variant: "destructive" });
     }
-    setShowBulkDeleteDialog(false);
   };
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
-      {/* Fixed Header */}
-      <div className="flex-shrink-0 bg-background">
-        <div className="px-6 h-16 flex items-center border-b w-full">
-          <div className="flex items-center justify-between w-full">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl text-foreground font-semibold">Accounts</h1>
-            </div>
-            <div className="flex items-center gap-3">
-              {selectedAccounts.length > 0 && (
-                <TooltipProvider>
-                  <div className="flex items-center gap-1">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="outline" size="icon" onClick={handleBulkDeleteClick}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Delete Selected ({selectedAccounts.length})</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </TooltipProvider>
-              )}
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    Actions
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => setShowColumnCustomizer(true)}>
-                    <Settings className="w-4 h-4 mr-2" />
-                    Columns
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
-                    <Upload className="w-4 h-4 mr-2" />
-                    {isImporting ? 'Importing...' : 'Import CSV'}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExport}>
-                    <Download className="w-4 h-4 mr-2" />
-                    Export CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={handleBulkDeleteClick} 
-                    disabled={selectedAccounts.length === 0} 
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Selected ({selectedAccounts.length})
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5">
-                <Plus className="w-4 h-4" />
-                Add Account
-              </Button>
-            </div>
-          </div>
-        </div>
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+      {/* Header */}
+      <div className="flex-shrink-0 h-16 px-6 border-b bg-background flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-foreground">Accounts</h1>
+        <Button onClick={() => setShowModal(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Account
+        </Button>
       </div>
 
-      {/* Hidden file input */}
-      <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileSelect} className="hidden" />
+      {/* Filter Bar */}
+      <div className="flex-shrink-0 px-6 py-3 bg-muted/30 border-b flex items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-[300px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Search accounts..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9" />
+        </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 min-h-0 flex flex-col px-4 pt-2 pb-4">
-        <AccountTable 
-          ref={accountTableRef}
-          showColumnCustomizer={showColumnCustomizer} 
-          setShowColumnCustomizer={setShowColumnCustomizer} 
-          showModal={showModal} 
-          setShowModal={setShowModal} 
-          selectedAccounts={selectedAccounts} 
-          setSelectedAccounts={setSelectedAccounts} 
-          key={`${refreshTrigger}-${initialStatus}`}
-          initialStatus={initialStatus}
-          onBulkDeleteComplete={() => {
-            setSelectedAccounts([]);
-            setRefreshTrigger(prev => prev + 1);
-            setShowBulkDeleteDialog(false);
-          }} 
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-auto min-w-[100px] [&>svg]:hidden">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="New">New</SelectItem>
+            <SelectItem value="Working">Working</SelectItem>
+            <SelectItem value="Qualified">Qualified</SelectItem>
+            <SelectItem value="Inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+          <SelectTrigger className="w-auto min-w-[100px] [&>svg]:hidden">
+            <SelectValue placeholder="All Owners" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Owners</SelectItem>
+            {ownerIds.map(id => (
+              <SelectItem key={id} value={id}>{displayNames[id] || id.slice(0, 8)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="flex-1" />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon" className="h-8 w-8">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setShowColumnCustomizer(true)}>
+              <Columns className="h-4 w-4 mr-2" /> Customize Columns
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
+              <Upload className="h-4 w-4 mr-2" /> {isImporting ? 'Importing...' : 'Import CSV'}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExport}>
+              <Download className="h-4 w-4 mr-2" /> Export CSV
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Bulk Actions */}
+      {selectedAccounts.length > 0 && (
+        <div className="flex-shrink-0 px-4 py-2 bg-primary/5 border-b flex items-center gap-4">
+          <span className="text-sm font-medium text-foreground">
+            {selectedAccounts.length} item{selectedAccounts.length !== 1 ? 's' : ''} selected
+          </span>
+          <div className="flex-1" />
+          <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
+            <Trash2 className="h-4 w-4 mr-1" /> Delete
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedAccounts([])} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4 mr-1" /> Clear
+          </Button>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedAccounts.length} Account{selectedAccounts.length !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The selected accounts will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileUpload} className="hidden" disabled={isImporting} />
+
+      {/* Table */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <AccountTable
+          showColumnCustomizer={showColumnCustomizer} setShowColumnCustomizer={setShowColumnCustomizer}
+          showModal={showModal} setShowModal={setShowModal}
+          selectedAccounts={selectedAccounts} setSelectedAccounts={setSelectedAccounts}
+          refreshTrigger={refreshTrigger} searchTerm={searchTerm} statusFilter={statusFilter} ownerFilter={ownerFilter}
         />
       </div>
-
-      {/* Bulk Delete Confirmation Dialog */}
-      <AccountDeleteConfirmDialog 
-        open={showBulkDeleteDialog} 
-        onConfirm={executeBulkDelete} 
-        onCancel={() => setShowBulkDeleteDialog(false)} 
-        isMultiple={true} 
-        count={selectedAccounts.length} 
-      />
-
     </div>
   );
 };

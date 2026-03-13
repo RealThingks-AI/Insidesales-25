@@ -1,3 +1,4 @@
+
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -12,7 +13,6 @@ export const useSecurityAudit = () => {
     details?: any
   ) => {
     try {
-      // Use cached user from useAuth - no network call needed
       if (!user) {
         console.log('No authenticated user, skipping security event logging');
         return;
@@ -40,13 +40,12 @@ export const useSecurityAudit = () => {
     recordId?: string
   ) => {
     try {
-      // Use cached user from useAuth - no network call needed
       if (!user) {
         console.log('No authenticated user, skipping data access logging');
         return;
       }
 
-      // Only log mutations, not reads - reduces log volume significantly
+      // Only log mutations, not reads
       if (operation === 'SELECT') {
         return;
       }

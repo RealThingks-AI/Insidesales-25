@@ -9,28 +9,58 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Deal } from "@/types/deal";
-import { LeadSearchableDropdown } from "@/components/LeadSearchableDropdown";
+import { ContactSearchableDropdown, Contact } from "@/components/ContactSearchableDropdown";
+import { AccountSearchableDropdown } from "@/components/AccountSearchableDropdown";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 
 interface FormFieldRendererProps {
   field: string;
   value: any;
   onChange: (field: string, value: any) => void;
-  onLeadSelect?: (lead: any) => void;
+  onContactSelect?: (contact: Contact) => void;
   error?: string;
 }
 
-export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error }: FormFieldRendererProps) => {
+export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, error }: FormFieldRendererProps) => {
+  const [leadOwnerIds, setLeadOwnerIds] = useState<string[]>([]);
+  const { displayNames, loading } = useUserDisplayNames(leadOwnerIds);
+
+  useEffect(() => {
+    if (field === 'lead_owner') {
+      fetchLeadOwners();
+    }
+  }, [field]);
+
+  const fetchLeadOwners = async () => {
+    try {
+      // Fetch all unique deal owners (created_by) from deals table at Lead stage
+      const { data: deals, error } = await supabase
+        .from('deals')
+        .select('created_by')
+        .eq('stage', 'Lead')
+        .not('created_by', 'is', null);
+
+      if (error) {
+        console.error('Error fetching lead owners:', error);
+        return;
+      }
+
+      // Get unique user IDs
+      const uniqueUserIds = Array.from(new Set(deals.map(deal => deal.created_by).filter(Boolean)));
+      setLeadOwnerIds(uniqueUserIds);
+    } catch (error) {
+      console.error('Error in fetchLeadOwners:', error);
+    }
+  };
 
   const getFieldLabel = (field: string) => {
     const labels: Record<string, string> = {
       project_name: 'Project Name',
-      customer_name: 'Customer Name',
-      lead_name: 'Lead Name',
+      customer_name: 'Account',
+      lead_name: 'Contact Name',
       lead_owner: 'Lead Owner',
-      account_id: 'Account',
-      contact_id: 'Contact',
       region: 'Region',
       priority: 'Priority',
       probability: 'Probability (%)',
@@ -107,42 +137,73 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
     onChange(fieldName, numericValue);
   };
 
-  const handleLeadSelect = async (lead: any) => {
-    console.log("Selected lead:", lead);
+  const handleContactSelect = async (contact: Contact) => {
+    console.log("Selected contact:", contact);
     
-    // Auto-fill available fields based on lead data
-    const updates: Partial<Deal> = {
-      lead_name: lead.lead_name,
-      customer_name: lead.company_name || '',
-      region: lead.country || '',
-    };
+    // Auto-fill available fields based on contact data
+    onChange('lead_name', contact.contact_name);
+    if (contact.company_name) onChange('customer_name', contact.company_name);
+    if (contact.region) onChange('region', contact.region);
 
-    // Update each field individually
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value) {
-        onChange(key, value);
+    // Handle lead owner - fetch display name for the contact's owner
+    const ownerUserId = contact.contact_owner;
+    if (ownerUserId) {
+      console.log("Fetching display name for contact owner:", ownerUserId);
+      
+      try {
+        const { data: functionResult, error: functionError } = await supabase.functions.invoke(
+          'fetch-user-display-names',
+          { body: { userIds: [ownerUserId] } }
+        );
+
+        if (!functionError && functionResult?.userDisplayNames) {
+          const ownerName = functionResult.userDisplayNames[ownerUserId];
+          if (ownerName) {
+            onChange('lead_owner', ownerName);
+          } else {
+            onChange('lead_owner', 'Unknown User');
+          }
+        } else {
+          // Fallback to direct query
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('id, full_name, "Email ID"')
+            .eq('id', ownerUserId)
+            .single();
+
+          if (profilesData) {
+            let displayName = "Unknown User";
+            if (profilesData.full_name?.trim() && 
+                !profilesData.full_name.includes('@') &&
+                profilesData.full_name !== profilesData["Email ID"]) {
+              displayName = profilesData.full_name.trim();
+            } else if (profilesData["Email ID"]) {
+              displayName = profilesData["Email ID"].split('@')[0];
+            }
+            onChange('lead_owner', displayName);
+          } else {
+            onChange('lead_owner', 'Unknown User');
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching contact owner display name:", error);
+        onChange('lead_owner', 'Unknown User');
       }
-    });
-
-    // Handle lead owner - set the user ID directly (for the Select dropdown)
-    if (lead.created_by) {
-      console.log("Setting lead owner to user ID:", lead.created_by);
-      onChange('lead_owner', lead.created_by);
-    } else {
-      onChange('lead_owner', null);
     }
 
-    if (onLeadSelect) {
-      onLeadSelect(lead);
+    onContactSelect?.(contact);
+  };
+
+  const handleAccountSelect = (account: { region?: string; industry?: string }) => {
+    // Auto-fill region from account only if currently empty
+    if (account.region && !value) {
+      // We can't check the form's region value from here, so we always set it
+      // The parent form should handle dedup logic if needed
     }
   };
 
   const renderDatePicker = (fieldName: string, dateValue: any) => {
     const date = dateValue ? new Date(dateValue) : undefined;
-    
-    // Only disable future dates for historical/past-oriented fields
-    const pastOnlyFields = ['rfq_received_date', 'signed_contract_date', 'implementation_start_date'];
-    const disableFutureDates = pastOnlyFields.includes(fieldName);
     
     return (
       <Popover>
@@ -155,7 +216,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             )}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
-            {date ? format(date, "dd/MM/yyyy") : <span>Pick a date</span>}
+            {date ? format(date, "PPP") : <span>Pick a date</span>}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
@@ -171,7 +232,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
                 onChange(fieldName, '');
               }
             }}
-            disabled={disableFutureDates ? (date) => date > new Date() : undefined}
+            disabled={(date) => date > new Date()} // Disable future dates
             initialFocus
             className={cn("p-3 pointer-events-auto")}
           />
@@ -180,111 +241,34 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
     );
   };
 
-  // Fetch accounts, contacts, and users for dropdowns
-  const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts-for-deals'],
-    queryFn: async () => {
-      const { data } = await supabase.from('accounts').select('id, company_name').order('company_name');
-      return data || [];
-    },
-    enabled: field === 'account_id',
-  });
-
-  const { data: contacts = [] } = useQuery({
-    queryKey: ['contacts-for-deals', value],
-    queryFn: async () => {
-      const { data } = await supabase.from('contacts').select('id, contact_name, account_id').order('contact_name');
-      return data || [];
-    },
-    enabled: field === 'contact_id',
-  });
-
-  // Fetch users/profiles for lead_owner dropdown
-  const { data: users = [] } = useQuery({
-    queryKey: ['profiles-for-deals'],
-    queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, full_name, "Email ID"').order('full_name');
-      return data || [];
-    },
-    enabled: field === 'lead_owner',
-  });
-
   const renderField = () => {
     switch (field) {
-      case 'account_id':
-        return (
-          <Select
-            value={value || 'none'}
-            onValueChange={(val) => onChange(field, val === 'none' ? null : val)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select account..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No account</SelectItem>
-              {accounts.map((acc: any) => (
-                <SelectItem key={acc.id} value={acc.id}>
-                  {acc.company_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
-
-      case 'contact_id':
-        return (
-          <Select
-            value={value || 'none'}
-            onValueChange={(val) => onChange(field, val === 'none' ? null : val)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select contact..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No contact</SelectItem>
-              {contacts.map((contact: any) => (
-                <SelectItem key={contact.id} value={contact.id}>
-                  {contact.contact_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
-
       case 'lead_name':
         return (
-          <LeadSearchableDropdown
+          <ContactSearchableDropdown
             value={getStringValue(value)}
             onValueChange={(val) => onChange(field, val)}
-            onLeadSelect={handleLeadSelect}
-            placeholder="Search and select a lead..."
+            onContactSelect={handleContactSelect}
+            placeholder="Search and select a contact..."
+          />
+        );
+
+      case 'customer_name':
+        return (
+          <AccountSearchableDropdown
+            value={getStringValue(value)}
+            onValueChange={(val) => onChange(field, val)}
+            placeholder="Search and select an account..."
           />
         );
 
       case 'lead_owner':
         return (
-          <Select
-            value={value || 'none'}
-            onValueChange={(val) => onChange(field, val === 'none' ? null : val)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select lead owner..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No owner</SelectItem>
-              {users.map((user: any) => {
-                // Get display name - prefer full_name, fallback to email prefix
-                const displayName = user.full_name && !user.full_name.includes('@') 
-                  ? user.full_name 
-                  : (user["Email ID"] ? user["Email ID"].split('@')[0] : 'Unknown User');
-                return (
-                  <SelectItem key={user.id} value={user.id}>
-                    {displayName}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+          <Input
+            value={getStringValue(value)}
+            onChange={(e) => onChange(field, e.target.value)}
+            placeholder="Enter lead owner name..."
+          />
         );
 
       case 'priority':
@@ -294,7 +278,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             onValueChange={(val) => onChange(field, parseInt(val))}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select priority..." />
+              <SelectValue placeholder="Select priority" />
             </SelectTrigger>
             <SelectContent>
               {[1, 2, 3, 4, 5].map(num => (
@@ -316,7 +300,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select probability..." />
+              <SelectValue placeholder="Select probability" />
             </SelectTrigger>
             <SelectContent>
               {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(percent => (
@@ -335,7 +319,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             onValueChange={(val) => onChange(field, val)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select region..." />
+              <SelectValue placeholder="Select region" />
             </SelectTrigger>
             <SelectContent>
               {['EU', 'US', 'ASIA', 'Other'].map(region => (
@@ -354,7 +338,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             onValueChange={(val) => onChange(field, val)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select customer need..." />
+              <SelectValue placeholder="Select customer need" />
             </SelectTrigger>
             <SelectContent>
               {['Open', 'Ongoing', 'Done'].map(option => (
@@ -397,7 +381,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             onValueChange={(val) => onChange(field, val)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select relationship strength..." />
+              <SelectValue placeholder="Select relationship strength" />
             </SelectTrigger>
             <SelectContent>
               {['Low', 'Medium', 'High'].map(option => (
@@ -420,7 +404,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
               console.log(`Budget update: setting to ${e.target.value}`);
               handleNumericChange(field, e.target.value);
             }}
-            placeholder="e.g., 50000"
+            placeholder="Enter budget in euros..."
           />
         );
 
@@ -434,7 +418,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select recurring status..." />
+              <SelectValue placeholder="Select recurring status" />
             </SelectTrigger>
             <SelectContent>
               {['Yes', 'No', 'Unclear'].map(option => (
@@ -519,7 +503,16 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
       case 'end_date':
       case 'rfq_received_date':
       case 'proposal_due_date':
-        return renderDatePicker(field, value);
+        return (
+          <Input
+            type="date"
+            value={getStringValue(value)}
+            onChange={(e) => {
+              console.log(`Date field ${field} update: setting to ${e.target.value}`);
+              onChange(field, e.target.value);
+            }}
+          />
+        );
 
       case 'total_contract_value':
       case 'project_duration':
@@ -594,8 +587,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
               console.log(`Textarea field ${field} update: setting to ${e.target.value}`);
               onChange(field, e.target.value);
             }}
-            rows={2}
-            className="min-h-[60px] resize-y"
+            rows={3}
             placeholder={`Enter ${getFieldLabel(field).toLowerCase()}...`}
           />
         );
@@ -622,11 +614,11 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
   };
 
   return (
-    <div className="space-y-1.5">
-      <Label className="text-sm font-medium">{getFieldLabel(field)}</Label>
+    <div className="space-y-2">
+      <Label>{getFieldLabel(field)}</Label>
       {renderField()}
       {error && (
-        <p className="text-xs text-destructive mt-1">{error}</p>
+        <p className="text-sm text-destructive">{error}</p>
       )}
     </div>
   );

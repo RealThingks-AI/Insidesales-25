@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useSecurityAudit } from "@/hooks/useSecurityAudit";
 
 interface UserModalProps {
   open: boolean;
@@ -21,6 +22,7 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
   const [role, setRole] = useState('user');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { logSecurityEvent } = useSecurityAudit();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +60,12 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
 
       if (error) throw error;
 
+      logSecurityEvent('USER_CREATED', 'users', undefined, {
+        email,
+        role,
+        display_name: displayName
+      });
+
       toast({
         title: "Success",
         description: "User created successfully",
@@ -87,12 +95,12 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Add New User</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1.5">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
@@ -104,7 +112,7 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
             />
           </div>
           
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="displayName">Display Name</Label>
             <Input
               id="displayName"
@@ -115,7 +123,7 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
@@ -128,7 +136,7 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
             />
           </div>
           
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="role">Role</Label>
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger>

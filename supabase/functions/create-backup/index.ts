@@ -1,229 +1,198 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface BackupManifest {
-  version: string;
-  created_at: string;
-  created_by: string;
-  tables: {
-    name: string;
-    row_count: number;
-  }[];
-  total_records: number;
-  include_audit_logs: boolean;
+const BACKUP_TABLES = [
+  'leads', 'contacts', 'accounts', 'deals', 'action_items',
+  'deal_action_items', 'lead_action_items', 'notifications',
+  'notification_preferences', 'page_permissions', 'profiles',
+  'user_preferences', 'user_roles',
+  'saved_filters', 'column_preferences', 'dashboard_preferences',
+  'yearly_revenue_targets'
+]
+
+const MODULE_TABLES: Record<string, string[]> = {
+  contacts: ['contacts'],
+  accounts: ['accounts'],
+  deals: ['deals', 'deal_action_items', 'leads', 'lead_action_items'],
+  action_items: ['action_items'],
+  notifications: ['notifications', 'notification_preferences'],
+}
+
+const MAX_BACKUPS = 30
+const BATCH_SIZE = 1000
+
+async function fetchAllRows(client: any, table: string): Promise<any[]> {
+  const allData: any[] = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await client
+      .from(table)
+      .select('*')
+      .range(from, from + BATCH_SIZE - 1)
+
+    if (error) {
+      console.error(`Error fetching ${table} at offset ${from}:`, error)
+      break
+    }
+
+    if (!data || data.length === 0) break
+    allData.push(...data)
+    if (data.length < BATCH_SIZE) break
+    from += BATCH_SIZE
+  }
+
+  return allData
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
-    const authHeader = req.headers.get('Authorization');
+    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!
+    const serviceRoleKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+    const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      throw new Error('Missing authorization header');
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // Create admin client for backup operations
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Create user client for auth check
-    const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
       global: { headers: { Authorization: authHeader } }
-    });
-
-    // Verify user is authenticated and is admin
-    const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+    })
+    const { data: { user }, error: authError } = await userClient.auth.getUser()
     if (authError || !user) {
-      throw new Error('Unauthorized');
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // Check if user is admin
-    const { data: roleData } = await supabaseAdmin
+    const adminClient = createClient(supabaseUrl, serviceRoleKey)
+    const { data: roleData } = await adminClient
       .from('user_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single();
+      .single()
 
-    const userRole = roleData?.role || user.user_metadata?.role || 'user';
-    if (userRole !== 'admin') {
-      throw new Error('Only admins can create backups');
+    if (roleData?.role !== 'admin') {
+      return new Response(JSON.stringify({ error: 'Admin access required' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    console.log('Starting backup creation for user:', user.email);
+    const body = await req.json().catch(() => ({}))
+    const backupType = body.backupType || 'manual'
+    const moduleName = body.moduleName || null
 
-    const { includeAuditLogs = true } = await req.json().catch(() => ({}));
-
-    // Tables to backup
-    const tablesToBackup = [
-      'accounts',
-      'contacts',
-      'leads',
-      'deals',
-      'deal_action_items',
-      'lead_action_items',
-      'notifications',
-      'profiles',
-      'saved_filters',
-      'user_preferences',
-      'user_roles',
-      'dashboard_preferences',
-      'yearly_revenue_targets',
-      'page_permissions',
-    ];
-
-    if (includeAuditLogs) {
-      tablesToBackup.push('security_audit_log');
+    let tablesToBackup = BACKUP_TABLES
+    if (moduleName && MODULE_TABLES[moduleName]) {
+      tablesToBackup = MODULE_TABLES[moduleName]
     }
 
-    const backupData: Record<string, any[]> = {};
-    const manifest: BackupManifest = {
-      version: '1.0',
-      created_at: new Date().toISOString(),
-      created_by: user.id,
-      tables: [],
-      total_records: 0,
-      include_audit_logs: includeAuditLogs,
-    };
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const fileName = moduleName
+      ? `backup-${moduleName}-${timestamp}.json`
+      : `backup-full-${timestamp}.json`
+    const filePath = `${user.id}/${fileName}`
 
-    // Fetch data from each table
-    for (const tableName of tablesToBackup) {
-      try {
-        const { data, error } = await supabaseAdmin
-          .from(tableName)
-          .select('*');
-
-        if (error) {
-          console.warn(`Error fetching ${tableName}:`, error.message);
-          backupData[tableName] = [];
-          manifest.tables.push({ name: tableName, row_count: 0 });
-        } else {
-          backupData[tableName] = data || [];
-          manifest.tables.push({ name: tableName, row_count: data?.length || 0 });
-          manifest.total_records += data?.length || 0;
-        }
-      } catch (err) {
-        console.warn(`Failed to backup ${tableName}:`, err);
-        backupData[tableName] = [];
-        manifest.tables.push({ name: tableName, row_count: 0 });
-      }
-    }
-
-    // Create backup JSON
-    const backupContent = JSON.stringify({
-      manifest,
-      data: backupData,
-    }, null, 2);
-
-    // Generate file name
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const fileName = `backup_${timestamp}.json`;
-    const filePath = `${user.id}/${fileName}`;
-
-    // Upload to storage
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from('backups')
-      .upload(filePath, new Blob([backupContent], { type: 'application/json' }), {
-        contentType: 'application/json',
-        upsert: false,
-      });
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      throw new Error(`Failed to upload backup: ${uploadError.message}`);
-    }
-
-    // Get file size
-    const sizeBytes = new Blob([backupContent]).size;
-
-    // Save backup metadata
-    const { data: backupRecord, error: dbError } = await supabaseAdmin
+    const { data: backupRecord, error: insertError } = await adminClient
       .from('backups')
       .insert({
         file_name: fileName,
         file_path: filePath,
-        size_bytes: sizeBytes,
-        tables_count: manifest.tables.length,
-        records_count: manifest.total_records,
-        backup_type: 'manual',
-        status: 'completed',
-        manifest: manifest,
+        backup_type: moduleName ? 'module' : backupType,
+        module_name: moduleName,
+        status: 'in_progress',
         created_by: user.id,
       })
       .select()
-      .single();
+      .single()
 
-    if (dbError) {
-      console.error('Database error:', dbError);
-      throw new Error(`Failed to save backup metadata: ${dbError.message}`);
+    if (insertError) throw insertError
+
+    const backupData: Record<string, any[]> = {}
+    const manifest: Record<string, number> = {}
+    let totalRecords = 0
+
+    for (const table of tablesToBackup) {
+      const data = await fetchAllRows(adminClient, table)
+      backupData[table] = data
+      manifest[table] = data.length
+      totalRecords += data.length
+      console.log(`Backed up ${table}: ${data.length} records`)
     }
 
-    // Clean up old backups (keep only last 10)
-    const { data: allBackups } = await supabaseAdmin
+    const backupJson = JSON.stringify({
+      version: '1.0',
+      created_at: new Date().toISOString(),
+      created_by: user.id,
+      backup_type: moduleName ? 'module' : backupType,
+      module_name: moduleName,
+      tables: tablesToBackup,
+      manifest,
+      data: backupData,
+    }, null, 2)
+
+    const sizeBytes = new Blob([backupJson]).size
+
+    const { error: uploadError } = await adminClient.storage
       .from('backups')
-      .select('id, file_path, created_at')
-      .order('created_at', { ascending: false });
+      .upload(filePath, backupJson, {
+        contentType: 'application/json',
+        upsert: true,
+      })
 
-    if (allBackups && allBackups.length > 10) {
-      const backupsToDelete = allBackups.slice(10);
-      
-      for (const oldBackup of backupsToDelete) {
-        // Delete from storage
-        await supabaseAdmin.storage
-          .from('backups')
-          .remove([oldBackup.file_path]);
-        
-        // Delete metadata
-        await supabaseAdmin
-          .from('backups')
-          .delete()
-          .eq('id', oldBackup.id);
-      }
-      
-      console.log(`Cleaned up ${backupsToDelete.length} old backups`);
+    if (uploadError) {
+      await adminClient.from('backups').update({ status: 'failed' }).eq('id', backupRecord.id)
+      throw uploadError
     }
 
-    // Log the backup action
-    await supabaseAdmin.rpc('log_security_event', {
-      p_action: 'BACKUP_CREATED',
-      p_resource_type: 'backup',
-      p_resource_id: backupRecord.id,
-      p_details: {
-        file_name: fileName,
-        tables_count: manifest.tables.length,
-        records_count: manifest.total_records,
-        size_bytes: sizeBytes,
-      }
-    });
+    await adminClient.from('backups').update({
+      status: 'completed',
+      size_bytes: sizeBytes,
+      tables_count: tablesToBackup.length,
+      records_count: totalRecords,
+      manifest,
+    }).eq('id', backupRecord.id)
 
-    console.log('Backup created successfully:', fileName);
+    // Enforce max backups limit
+    const { data: allBackups } = await adminClient
+      .from('backups')
+      .select('id, file_path')
+      .eq('status', 'completed')
+      .order('created_at', { ascending: true })
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        backup: backupRecord,
-        message: 'Backup created successfully' 
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
+    if (allBackups && allBackups.length > MAX_BACKUPS) {
+      const toDelete = allBackups.slice(0, allBackups.length - MAX_BACKUPS)
+      for (const old of toDelete) {
+        await adminClient.storage.from('backups').remove([old.file_path])
+        await adminClient.from('backups').delete().eq('id', old.id)
       }
-    );
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      backupId: backupRecord.id,
+      fileName,
+      tablesCount: tablesToBackup.length,
+      recordsCount: totalRecords,
+      sizeBytes,
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+
   } catch (error: any) {
-    console.error('Backup creation error:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: error.message === 'Unauthorized' ? 401 : 500 
-      }
-    );
+    console.error('Backup error:', error)
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
-});
+})

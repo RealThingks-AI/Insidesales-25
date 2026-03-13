@@ -1,1 +1,10 @@
 project_id = "nreslricievaamrwfrlx"
+
+[functions.scheduled-backup]
+verify_jwt = false
+
+[functions.daily-action-reminders]
+verify_jwt = false
+
+[functions.send-campaign-email]
+verify_jwt = false

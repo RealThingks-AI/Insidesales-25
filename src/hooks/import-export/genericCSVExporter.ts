@@ -21,7 +21,7 @@ export class GenericCSVExporter {
     const headers = fieldsOrder;
 
     // Convert data to CSV rows with proper formatting
-    const csvRows = data.map((record, index) => {
+    const csvRows = data.map((record) => {
       return fieldsOrder.map(field => {
         let value = record[field];
         
@@ -53,7 +53,6 @@ export class GenericCSVExporter {
       .map(row => 
         row.map(field => {
           const str = String(field || '');
-          // If field contains comma, quote, or newline, wrap in quotes and escape quotes
           if (str.includes(',') || str.includes('"') || str.includes('\n')) {
             return `"${str.replace(/"/g, '""')}"`;
           }
@@ -64,7 +63,6 @@ export class GenericCSVExporter {
 
     console.log(`GenericCSVExporter: CSV content generated, length:`, csvContent.length);
     
-    // Download the CSV file
     const success = downloadCSV(csvContent, filename);
     
     if (!success) {

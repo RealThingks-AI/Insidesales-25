@@ -1,7 +1,7 @@
 
 import { GenericCSVExporter } from './genericCSVExporter';
 
-// Exact field order as specified - Added account_id and contact_id
+// Exact field order - added account_id and contact_id, removed action_items_json
 const DEALS_EXPORT_FIELDS = [
   'id', 'deal_name', 'stage', 'probability', 'drop_reason', 'created_by', 'modified_by', 
   'created_at', 'modified_at', 'lead_name', 'lead_owner', 'project_name', 'customer_name', 

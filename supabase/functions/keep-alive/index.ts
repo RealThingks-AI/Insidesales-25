@@ -1,9 +1,9 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -12,63 +12,117 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log("Keep-alive ping received at:", new Date().toISOString());
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
-    // Update the keep-alive record to generate database activity
-    const { data, error } = await supabase
-      .from('keep_alive')
-      .upsert({ 
-        id: 1,
-        "Able to read DB": new Date().toISOString()
-      })
-      .select();
-
-    if (error) {
-      console.error("Keep-alive upsert error:", error);
-      
-      // Fallback: just do a simple count query to keep DB active
-      const { count } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true });
-      
-      console.log("Fallback query executed, profiles count:", count);
-      
-      return new Response(JSON.stringify({ 
-        status: 'alive', 
-        fallback: true,
-        profiles_count: count,
-        timestamp: new Date().toISOString() 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    console.log('keep-alive: Function triggered at', new Date().toISOString());
+    
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('keep-alive: Missing environment variables');
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
-    console.log("Keep-alive successful:", data);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    return new Response(JSON.stringify({ 
-      status: 'alive', 
-      timestamp: new Date().toISOString(),
-      data 
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    // Update the keep_alive table with current timestamp
+    const { data, error } = await supabase
+      .from('keep_alive')
+      .update({ last_ping: new Date().toISOString() })
+      .eq('id', 1)
+      .select()
+      .single();
 
-  } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error("Keep-alive error:", errorMessage);
-    return new Response(JSON.stringify({ 
-      status: 'error', 
-      message: errorMessage,
-      timestamp: new Date().toISOString() 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    if (error) {
+      console.error('keep-alive: Error updating keep_alive table:', error);
+      
+      // If no row exists, try to insert one
+      if (error.code === 'PGRST116') {
+        const { data: insertData, error: insertError } = await supabase
+          .from('keep_alive')
+          .insert({ 
+            id: 1, 
+            'Able to read DB': 'Yes', 
+            last_ping: new Date().toISOString() 
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('keep-alive: Error inserting into keep_alive table:', insertError);
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: insertError.message,
+              timestamp: new Date().toISOString()
+            }),
+            { 
+              status: 500, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+
+        console.log('keep-alive: Created new keep_alive record:', insertData);
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Keep-alive ping successful (created new record)',
+            data: insertData,
+            timestamp: new Date().toISOString()
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: error.message,
+          timestamp: new Date().toISOString()
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    console.log('keep-alive: Successfully pinged database:', data);
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Keep-alive ping successful',
+        data: data,
+        timestamp: new Date().toISOString()
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('keep-alive: Function error:', errorMessage);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: errorMessage,
+        timestamp: new Date().toISOString()
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
   }
 });
 

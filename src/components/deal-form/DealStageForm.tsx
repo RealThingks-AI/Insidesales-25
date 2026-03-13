@@ -10,7 +10,7 @@ import { FinalStageForm } from "./FinalStageForm";
 interface DealStageFormProps {
   formData: Partial<Deal>;
   onFieldChange: (field: string, value: any) => void;
-  onLeadSelect?: (lead: any) => void;
+  onContactSelect?: (contact: any) => void;
   fieldErrors: Record<string, string>;
   stage: DealStage;
   showPreviousStages: boolean;
@@ -19,7 +19,7 @@ interface DealStageFormProps {
 export const DealStageForm = ({ 
   formData, 
   onFieldChange, 
-  onLeadSelect, 
+  onContactSelect, 
   fieldErrors, 
   stage, 
   showPreviousStages 
@@ -39,7 +39,7 @@ export const DealStageForm = ({
           <LeadStageForm
             formData={formData}
             onFieldChange={onFieldChange}
-            onLeadSelect={onLeadSelect}
+            onContactSelect={onContactSelect}
             fieldErrors={fieldErrors}
           />
         );

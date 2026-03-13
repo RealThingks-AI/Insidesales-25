@@ -6,17 +6,17 @@ import { FormFieldRenderer } from "./FormFieldRenderer";
 interface LeadStageFormProps {
   formData: Partial<Deal>;
   onFieldChange: (field: string, value: any) => void;
-  onLeadSelect?: (lead: any) => void;
+  onContactSelect?: (contact: any) => void;
   fieldErrors: Record<string, string>;
 }
 
-export const LeadStageForm = ({ formData, onFieldChange, onLeadSelect, fieldErrors }: LeadStageFormProps) => {
-  const fields = ['project_name', 'lead_name', 'customer_name', 'account_id', 'lead_owner', 'priority'];
+export const LeadStageForm = ({ formData, onFieldChange, onContactSelect, fieldErrors }: LeadStageFormProps) => {
+  const fields = ['project_name', 'lead_name', 'customer_name', 'region', 'lead_owner', 'priority'];
 
   return (
     <Card>
-      <CardHeader className="pb-4">
-        <CardTitle className="text-lg font-semibold">Lead Stage</CardTitle>
+      <CardHeader>
+        <CardTitle className="text-lg">Lead Stage</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -26,7 +26,7 @@ export const LeadStageForm = ({ formData, onFieldChange, onLeadSelect, fieldErro
               field={field}
               value={formData[field as keyof Deal]}
               onChange={onFieldChange}
-              onLeadSelect={onLeadSelect}
+              onContactSelect={onContactSelect}
               error={fieldErrors[field]}
             />
           ))}

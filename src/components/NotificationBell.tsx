@@ -44,42 +44,30 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
       await markAsRead(notification.id);
     }
 
-    // Parse the notification message to extract IDs and navigate accordingly
-    const message = notification.message.toLowerCase();
-    
-    // Check for deal references in the message
-    const dealMatch = message.match(/deal[:\s]+([a-f0-9-]{36})/);
-    const leadMatch = message.match(/lead[:\s]+([a-f0-9-]{36})/);
-    
-    // Navigate based on the notification content and available IDs
-    if (notification.lead_id) {
-      // Direct lead ID available, navigate to leads page
-      navigate(`/leads?highlight=${notification.lead_id}`);
-    } else if (dealMatch) {
-      // Deal ID found in message, navigate to deals page
-      const dealId = dealMatch[1];
-      navigate(`/deals?highlight=${dealId}`);
-    } else if (leadMatch) {
-      // Lead ID found in message, navigate to leads page  
-      const leadId = leadMatch[1];
-      navigate(`/leads?highlight=${leadId}`);
+    // If we have an action_item_id, navigate to action items page with highlight
+    if (notification.action_item_id) {
+      navigate(`/action-items?highlight=${notification.action_item_id}`);
+      setIsOpen(false);
+      return;
+    }
+
+    // Fallback navigation based on module_type
+    if (notification.module_type === 'deals' && notification.module_id) {
+      navigate(`/deals?highlight=${notification.module_id}`);
+    } else if (notification.module_type === 'leads' && notification.module_id) {
+      navigate(`/deals`);
+    } else if (notification.module_type === 'contacts' && notification.module_id) {
+      navigate(`/contacts?highlight=${notification.module_id}`);
+    } else if (notification.lead_id) {
+      navigate(`/deals`);
     } else if (notification.notification_type === 'action_item') {
-      // Action item notification - try to determine context
-      if (message.includes('deal')) {
-        navigate('/deals');
-      } else if (message.includes('lead') || message.includes('contact')) {
-        navigate('/leads');
-      } else {
-        // Default to deals page for action items
-        navigate('/deals');
-      }
+      navigate('/action-items');
     } else if (notification.notification_type === 'deal_update') {
       navigate('/deals');
     } else if (notification.notification_type === 'lead_update') {
-      navigate('/leads');
+      navigate('/deals');
     } else {
-      // Default navigation
-      navigate('/dashboard');
+      navigate('/action-items');
     }
     
     setIsOpen(false);
@@ -95,17 +83,39 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
     await deleteNotification(notificationId);
   };
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'action_item':
-        return '📋';
-      case 'lead_update':
-        return '👤';
-      case 'deal_update':
-        return '💼';
-      default:
-        return '🔔';
+  const getNotificationIcon = (notification: any) => {
+    const message = notification.message || '';
+    const type = notification.notification_type;
+    
+    // Check for emoji prefixes first (from trigger)
+    if (message.includes('🔴')) return '🔴';
+    if (message.includes('✅')) return '✅';
+    if (message.includes('🗑️')) return '🗑️';
+    if (message.includes('📊')) return '📊';
+    if (message.includes('🔄')) return '🔄';
+    
+    // Check by notification type first
+    if (type === 'deal_update') {
+      if (message.toLowerCase().includes('deleted')) return '🗑️';
+      if (message.toLowerCase().includes('stage')) return '📊';
+      return '💼';
     }
+    if (type === 'lead_update') {
+      if (message.toLowerCase().includes('deleted')) return '🗑️';
+      if (message.toLowerCase().includes('status')) return '🔄';
+      return '👤';
+    }
+    
+    // Action item notifications
+    if (message.toLowerCase().includes('completed')) return '✅';
+    if (message.toLowerCase().includes('deleted')) return '🗑️';
+    if (message.toLowerCase().includes('assigned to you')) return '📋';
+    if (message.toLowerCase().includes('reassigned')) return '🔄';
+    if (message.toLowerCase().includes('priority') || message.toLowerCase().includes('high')) return '🔴';
+    if (message.toLowerCase().includes('due date')) return '📅';
+    
+    // Fallback
+    return '🔔';
   };
 
   return (
@@ -114,12 +124,12 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
       <Button
         variant="outline"
         size={size === 'small' ? 'sm' : 'lg'}
-        className={`relative p-0 bg-background hover:bg-accent rounded-full border-2 border-border hover:border-primary/50 shadow-md hover:shadow-lg transition-all duration-200 ${
+        className={`relative p-0 bg-white hover:bg-blue-50 rounded-full border-2 border-gray-300 hover:border-blue-400 shadow-md hover:shadow-lg transition-all duration-200 ${
           size === 'small' ? 'h-8 w-8' : 'h-12 w-12'
         }`}
         onClick={() => setIsOpen(!isOpen)}
       >
-        <Bell className={`text-muted-foreground hover:text-primary transition-colors ${
+        <Bell className={`text-gray-700 hover:text-blue-600 transition-colors ${
           size === 'small' ? 'h-4 w-4' : 'h-6 w-6'
         }`} />
         {unreadCount > 0 && (
@@ -139,14 +149,14 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
       {/* Notifications Dropdown */}
       {isOpen && (
         <div 
-          className={`absolute right-0 ${placement === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'} w-96 bg-popover rounded-lg shadow-xl border border-border`}
+          className={`absolute right-0 ${placement === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'} w-96 bg-white rounded-lg shadow-xl border border-gray-200`}
           style={{ 
             zIndex: 10000
           }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-border bg-muted/50 rounded-t-lg">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
               <Bell className="h-4 w-4" />
               Notifications
             </h3>
@@ -156,7 +166,7 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
                   variant="ghost"
                   size="sm"
                   onClick={handleMarkAllRead}
-                  className="text-xs text-primary hover:text-primary/80 hover:bg-primary/10"
+                  className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                 >
                   <CheckCheck className="h-4 w-4 mr-1" />
                   Mark all read
@@ -166,7 +176,7 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsOpen(false)}
-                className="h-6 w-6 p-0 hover:bg-muted"
+                className="h-6 w-6 p-0 hover:bg-gray-200"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -176,19 +186,19 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
           {/* Notifications List */}
           <ScrollArea className="max-h-96">
             {notifications.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">
-                <Bell className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+              <div className="p-8 text-center text-gray-500">
+                <Bell className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                 <p className="text-sm">No notifications yet</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">You'll see updates about action items here</p>
+                <p className="text-xs text-gray-400 mt-1">You'll see updates about action items here</p>
               </div>
             ) : (
-              <div className="divide-y divide-border">
+              <div className="divide-y divide-gray-100">
                 {notifications.map((notification) => (
                   <div
                     key={notification.id}
                     className={cn(
-                      "p-4 hover:bg-accent cursor-pointer transition-colors relative group",
-                      notification.status === 'unread' && "bg-primary/5 border-l-4 border-l-primary"
+                      "p-4 hover:bg-gray-50 cursor-pointer transition-colors relative group",
+                      notification.status === 'unread' && "bg-blue-50 border-l-4 border-l-blue-500"
                     )}
                     onClick={() => handleNotificationClick(notification)}
                   >
@@ -196,21 +206,21 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start gap-3">
                           <span className="text-lg mt-0.5">
-                            {getNotificationIcon(notification.notification_type)}
+                            {getNotificationIcon(notification)}
                           </span>
                           <div className="flex-1">
                             <p className={cn(
-                              "text-sm text-foreground leading-relaxed",
+                              "text-sm text-gray-900 leading-relaxed",
                               notification.status === 'unread' && "font-semibold"
                             )}>
                               {notification.message}
                             </p>
                             <div className="flex items-center gap-2 mt-2">
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-gray-500">
                                 {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
                               </p>
                               {notification.status === 'unread' && (
-                                <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
+                                <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
                                   New
                                 </Badge>
                               )}
@@ -261,11 +271,11 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
 
           {/* Footer */}
           {notifications.length > 0 && (
-            <div className="p-3 border-t border-border text-center bg-muted/50 rounded-b-lg">
+            <div className="p-3 border-t border-gray-200 text-center bg-gray-50 rounded-b-lg">
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs text-primary hover:text-primary/80 hover:bg-primary/10"
+                className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-100"
                 onClick={() => {
                   setIsOpen(false);
                   navigate('/notifications');

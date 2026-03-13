@@ -42,24 +42,21 @@ export const RFQStageForm = ({ formData, onFieldChange, fieldErrors }: RFQStageF
     'internal_comment'
   ];
 
-  const fullWidthFields = ['action_items', 'internal_comment'];
-
   return (
     <Card>
-      <CardHeader className="pb-4">
-        <CardTitle className="text-lg font-semibold">RFQ Stage</CardTitle>
+      <CardHeader>
+        <CardTitle className="text-lg">RFQ Stage</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {fields.map(field => (
-            <div key={field} className={fullWidthFields.includes(field) ? 'md:col-span-2 lg:col-span-3' : ''}>
-              <FormFieldRenderer
-                field={field}
-                value={formData[field as keyof Deal]}
-                onChange={onFieldChange}
-                error={fieldErrors[field]}
-              />
-            </div>
+            <FormFieldRenderer
+              key={field}
+              field={field}
+              value={formData[field as keyof Deal]}
+              onChange={onFieldChange}
+              error={fieldErrors[field]}
+            />
           ))}
         </div>
       </CardContent>

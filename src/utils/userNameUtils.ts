@@ -1,159 +1,77 @@
-import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
 
-// User name conversion utilities for import/export
+import { supabase } from '@/integrations/supabase/client';
+
+const USER_FIELDS = [
+  'contact_owner', 'created_by', 'modified_by', 'lead_owner',
+  'account_owner', 'assigned_to', 'created_by'
+];
+
+const DATETIME_FIELDS = [
+  'created_at', 'modified_at', 'created_time', 'modified_time', 'last_activity_time'
+];
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class UserNameUtils {
-  
-  // Fetch display names for a list of user IDs
+
+  static isUserField(field: string): boolean {
+    return USER_FIELDS.includes(field);
+  }
+
+  static isDateTimeField(field: string): boolean {
+    return DATETIME_FIELDS.includes(field);
+  }
+
+  static extractUserIds(data: any[], fields?: string[]): string[] {
+    const fieldsToCheck = fields || USER_FIELDS;
+    const ids = new Set<string>();
+    for (const record of data) {
+      for (const field of fieldsToCheck) {
+        const value = record[field];
+        if (value && typeof value === 'string' && UUID_REGEX.test(value)) {
+          ids.add(value);
+        }
+      }
+    }
+    return Array.from(ids);
+  }
+
   static async fetchUserDisplayNames(userIds: string[]): Promise<Record<string, string>> {
-    const uniqueIds = [...new Set(userIds.filter(id => id && id.trim()))];
-    if (uniqueIds.length === 0) return {};
-
+    if (!userIds || userIds.length === 0) return {};
     try {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', uniqueIds);
-
-      const nameMap: Record<string, string> = {};
-      profiles?.forEach(profile => {
-        nameMap[profile.id] = profile.full_name || 'Unknown User';
+      const { data, error } = await supabase.functions.invoke('fetch-user-display-names', {
+        body: { userIds },
       });
-
-      return nameMap;
-    } catch (error) {
-      console.warn('UserNameUtils: Error fetching display names:', error);
+      if (error) {
+        console.error('UserNameUtils: Error fetching display names:', error);
+        return {};
+      }
+      return data?.userDisplayNames || {};
+    } catch (err) {
+      console.error('UserNameUtils: Failed to fetch display names:', err);
       return {};
     }
   }
 
-  // Fetch user IDs by display names
-  static async fetchUserIdsByNames(names: string[]): Promise<Record<string, string>> {
-    const uniqueNames = [...new Set(names.filter(name => name && name.trim()))];
-    if (uniqueNames.length === 0) return {};
-
-    try {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name');
-
-      const idMap: Record<string, string> = {};
-      profiles?.forEach(profile => {
-        if (profile.full_name) {
-          idMap[profile.full_name.toLowerCase()] = profile.id;
-        }
-      });
-
-      return idMap;
-    } catch (error) {
-      console.warn('UserNameUtils: Error fetching user IDs:', error);
-      return {};
-    }
-  }
-
-  // Resolve user ID from name or UUID
-  static resolveUserId(value: string | null, userIdMap: Record<string, string>, defaultId: string): string {
-    if (!value || !value.trim()) return defaultId;
-    
-    // Check if it's already a UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidRegex.test(value)) return value;
-    
-    // Otherwise, look up by name
-    return userIdMap[value.toLowerCase()] || defaultId;
-  }
-
-  // Format ID for export (keep full UUID for proper import matching)
-  static formatIdForExport(id: string | null): string {
+  static formatIdForExport(id: string): string {
     if (!id) return '';
-    return id; // Keep full UUID for import/export roundtrip
+    return id.substring(0, 8);
   }
 
-  // Format date/datetime for export (ISO standard format)
-  static formatDateTimeForExport(dateValue: any): string {
-    if (!dateValue) return '';
-    
+  static formatDateTimeForExport(value: any): string {
+    if (!value) return '';
     try {
-      const date = new Date(dateValue);
+      const date = new Date(value);
       if (isNaN(date.getTime())) return '';
-      return format(date, 'yyyy-MM-dd HH:mm:ss');
+      const y = date.getFullYear();
+      const m = (date.getMonth() + 1).toString().padStart(2, '0');
+      const d = date.getDate().toString().padStart(2, '0');
+      const h = date.getHours().toString().padStart(2, '0');
+      const min = date.getMinutes().toString().padStart(2, '0');
+      const s = date.getSeconds().toString().padStart(2, '0');
+      return `${y}-${m}-${d} ${h}:${min}:${s}`;
     } catch {
       return '';
     }
-  }
-
-  // Format date for export (ISO standard format)
-  static formatDateForExport(dateValue: any): string {
-    if (!dateValue) return '';
-    
-    try {
-      const date = new Date(dateValue);
-      if (isNaN(date.getTime())) return '';
-      return format(date, 'yyyy-MM-dd');
-    } catch {
-      return '';
-    }
-  }
-
-  // Format time for export (HH:mm format)
-  static formatTimeForExport(dateValue: any): string {
-    if (!dateValue) return '';
-    
-    try {
-      const date = new Date(dateValue);
-      if (isNaN(date.getTime())) return '';
-      return format(date, 'HH:mm');
-    } catch {
-      return '';
-    }
-  }
-
-  // User fields that should be converted
-  static readonly USER_FIELDS = [
-    'account_owner', 'contact_owner', 'created_by', 'modified_by', 
-    'assigned_to', 'lead_owner', 'host', 'organizer'
-  ];
-  
-  // Date/time fields that should be formatted
-  static readonly DATETIME_FIELDS = [
-    'created_at', 'modified_at', 'created_time', 'modified_time', 
-    'updated_at', 'completed_at', 'last_contacted_at'
-  ];
-
-  // Check if field is a user field
-  static isUserField(fieldName: string): boolean {
-    return this.USER_FIELDS.includes(fieldName);
-  }
-
-  // Check if field is a datetime field
-  static isDateTimeField(fieldName: string): boolean {
-    return this.DATETIME_FIELDS.includes(fieldName);
-  }
-
-  // Extract all user IDs from data for a specific set of fields
-  static extractUserIds(data: any[], fields: string[] = this.USER_FIELDS): string[] {
-    const userIds: string[] = [];
-    data.forEach(record => {
-      fields.forEach(field => {
-        if (record[field]) {
-          userIds.push(record[field]);
-        }
-      });
-    });
-    return userIds;
-  }
-
-  // Extract all user names from CSV rows for specific headers
-  static extractUserNames(rows: string[][], headers: string[], fields: string[] = this.USER_FIELDS): string[] {
-    const names: string[] = [];
-    rows.forEach(row => {
-      headers.forEach((header, idx) => {
-        if (fields.includes(header) && row[idx]) {
-          names.push(row[idx]);
-        }
-      });
-    });
-    return names;
   }
 }

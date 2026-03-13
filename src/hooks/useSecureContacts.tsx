@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSecureDataAccess } from '@/hooks/useSecureDataAccess';
 import { useToast } from '@/hooks/use-toast';
 import { useCRUDAudit } from '@/hooks/useCRUDAudit';
+import { fetchAllRecords } from '@/utils/supabasePagination';
 
 interface Contact {
   id: string;
@@ -37,24 +38,19 @@ export const useSecureContacts = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const { secureQuery, secureExport } = useSecureDataAccess();
-  const { logDelete } = useCRUDAudit();
+  const { logCreate, logUpdate, logDelete } = useCRUDAudit();
   const { toast } = useToast();
 
   const fetchContacts = async () => {
     try {
       setLoading(true);
-      const query = supabase
-        .from('contacts')
-        .select('*')
-        .order('created_time', { ascending: false });
-
-      const result = await secureQuery('contacts', query, 'SELECT');
-      setContacts(result.data || []);
+      const allContacts = await fetchAllRecords<Contact>('contacts', 'created_time', false);
+      setContacts(allContacts);
     } catch (error: any) {
       console.error('Error fetching contacts:', error);
       toast({
-        title: "Access Denied",
-        description: "You don't have permission to view these contacts",
+        title: "Error",
+        description: "Failed to fetch contacts",
         variant: "destructive",
       });
     } finally {
@@ -77,6 +73,7 @@ export const useSecureContacts = () => {
       
       if (result.data) {
         setContacts(prev => [result.data, ...prev]);
+        await logCreate('contacts', result.data.id, { contact_name: result.data.contact_name, ...contactData });
         toast({
           title: "Success",
           description: "Contact created successfully",
@@ -97,6 +94,8 @@ export const useSecureContacts = () => {
 
   const updateContact = async (id: string, updates: Partial<Contact>) => {
     try {
+      const existingContact = contacts.find(c => c.id === id);
+      
       const query = supabase
         .from('contacts')
         .update({
@@ -114,6 +113,7 @@ export const useSecureContacts = () => {
         setContacts(prev => prev.map(contact => 
           contact.id === id ? result.data : contact
         ));
+        await logUpdate('contacts', id, updates, existingContact || {});
       }
       
       return result.data;

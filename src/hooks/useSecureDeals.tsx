@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSecureDataAccess } from '@/hooks/useSecureDataAccess';
 import { useToast } from '@/hooks/use-toast';
 import { useCRUDAudit } from '@/hooks/useCRUDAudit';
+import { fetchAllRecords } from '@/utils/supabasePagination';
 
 interface Deal {
   id: string;
@@ -27,24 +28,19 @@ export const useSecureDeals = () => {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const { secureQuery, secureExport } = useSecureDataAccess();
-  const { logDelete } = useCRUDAudit();
+  const { logUpdate, logDelete } = useCRUDAudit();
   const { toast } = useToast();
 
   const fetchDeals = async () => {
     try {
       setLoading(true);
-      const query = supabase
-        .from('deals')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      const result = await secureQuery('deals', query, 'SELECT');
-      setDeals(result.data || []);
+      const allDeals = await fetchAllRecords<Deal>('deals', 'created_at', false);
+      setDeals(allDeals);
     } catch (error: any) {
       console.error('Error fetching deals:', error);
       toast({
-        title: "Access Denied",
-        description: "You don't have permission to view these deals",
+        title: "Error",
+        description: "Failed to fetch deals",
         variant: "destructive",
       });
     } finally {
@@ -70,10 +66,12 @@ export const useSecureDeals = () => {
       const result = await secureQuery('deals', query, 'UPDATE');
       
       if (result.data) {
-        // Update local state
         setDeals(prev => prev.map(deal => 
           deal.id === id ? { ...deal, ...updates } : deal
         ));
+        
+        // Log the update with old/new values
+        await logUpdate('deals', id, updates, existingDeal || {});
         
         console.log('Deal updated successfully');
         toast({

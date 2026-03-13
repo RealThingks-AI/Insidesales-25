@@ -6,11 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Shield, User, Users } from "lucide-react";
-import { useUserRole } from "@/hooks/useUserRole";
-import { useQueryClient } from "@tanstack/react-query";
+import { Shield, User, Crown, Briefcase, Phone, MapPin } from "lucide-react";
+import { usePermissions } from "@/contexts/PermissionsContext";
+import { useSecurityAudit } from "@/hooks/useSecurityAudit";
 
-interface User {
+interface UserData {
   id: string;
   email: string;
   user_metadata: {
@@ -22,15 +22,25 @@ interface User {
 interface ChangeRoleModalProps {
   open: boolean;
   onClose: () => void;
-  user: User | null;
+  user: UserData | null;
   onSuccess: () => void;
 }
+
+const roleConfig = [
+  { value: 'super_admin', label: 'Super Admin', icon: Crown, description: 'Full access to everything including administration' },
+  { value: 'admin', label: 'Admin', icon: Shield, description: 'Full access to all modules and administration' },
+  { value: 'sales_head', label: 'Sales Head', icon: Briefcase, description: 'All modules except administration' },
+  { value: 'field_sales', label: 'Field Sales', icon: MapPin, description: 'All modules except administration' },
+  { value: 'inside_sales', label: 'Inside Sales', icon: Phone, description: 'Accounts, Contacts, Campaigns only' },
+  { value: 'user', label: 'User', icon: User, description: 'Basic access based on page permissions' },
+];
 
 const ChangeRoleModal = ({ open, onClose, user, onSuccess }: ChangeRoleModalProps) => {
   const [selectedRole, setSelectedRole] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { isAdmin } = useUserRole();
+  const { isAdmin } = usePermissions();
+  const { logSecurityEvent } = useSecurityAudit();
 
   useEffect(() => {
     if (user) {
@@ -42,7 +52,6 @@ const ChangeRoleModal = ({ open, onClose, user, onSuccess }: ChangeRoleModalProp
     e.preventDefault();
     if (!user || !selectedRole) return;
 
-    // Check if current user is admin
     if (!isAdmin) {
       toast({
         title: "Access Denied",
@@ -72,6 +81,12 @@ const ChangeRoleModal = ({ open, onClose, user, onSuccess }: ChangeRoleModalProp
       if (error) throw error;
 
       if (data?.success) {
+        logSecurityEvent('ROLE_CHANGE', 'user_roles', user.id, {
+          email: user.email,
+          old_role: user.role || 'user',
+          new_role: selectedRole
+        });
+        
         toast({
           title: "Success",
           description: `User role updated to ${selectedRole}`,
@@ -84,21 +99,11 @@ const ChangeRoleModal = ({ open, onClose, user, onSuccess }: ChangeRoleModalProp
       }
     } catch (error: any) {
       console.error('Error updating role:', error);
-      
-      // Handle specific admin restriction error
-      if (error.message?.includes('Only Admins can change user roles')) {
-        toast({
-          title: "Access Denied",
-          description: "Only Admins can change user roles.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: error.message || "Failed to update user role",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update user role",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -113,16 +118,8 @@ const ChangeRoleModal = ({ open, onClose, user, onSuccess }: ChangeRoleModalProp
 
   if (!user) return null;
 
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return <Shield className="h-4 w-4" />;
-      case 'user':
-        return <User className="h-4 w-4" />;
-      default:
-        return <User className="h-4 w-4" />;
-    }
-  };
+  const currentRoleConfig = roleConfig.find(r => r.value === selectedRole) || roleConfig[5];
+  const RoleIcon = currentRoleConfig.icon;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -159,49 +156,66 @@ const ChangeRoleModal = ({ open, onClose, user, onSuccess }: ChangeRoleModalProp
                 <SelectValue placeholder="Select a role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="user">
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    User
-                  </div>
-                </SelectItem>
-                <SelectItem value="manager">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Manager
-                  </div>
-                </SelectItem>
-                <SelectItem value="admin">
-                  <div className="flex items-center gap-2">
-                    <Shield className="h-4 w-4" />
-                    Admin
-                  </div>
-                </SelectItem>
+                {roleConfig.map(role => {
+                  const Icon = role.icon;
+                  return (
+                    <SelectItem key={role.value} value={role.value}>
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        {role.label}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
 
           <div className="bg-muted p-3 rounded-md">
             <h4 className="font-medium mb-2 flex items-center gap-2">
-              {getRoleIcon(selectedRole)}
-              {selectedRole === 'admin' ? 'Admin' : selectedRole === 'manager' ? 'Manager' : 'User'} Permissions
+              <RoleIcon className="h-4 w-4" />
+              {currentRoleConfig.label} Permissions
             </h4>
+            <p className="text-sm text-muted-foreground mb-2">{currentRoleConfig.description}</p>
             <ul className="text-sm text-muted-foreground space-y-1">
-              {selectedRole === 'admin' ? (
+              {selectedRole === 'super_admin' && (
+                <>
+                  <li>• Full access to all modules</li>
+                  <li>• Can manage users, roles, and all settings</li>
+                  <li>• Can update and delete all records</li>
+                  <li>• Access to audit logs and system tools</li>
+                </>
+              )}
+              {selectedRole === 'admin' && (
                 <>
                   <li>• Full access to all modules</li>
                   <li>• Can manage users and settings</li>
                   <li>• Can update and delete all records</li>
                   <li>• Access to audit logs</li>
                 </>
-              ) : selectedRole === 'manager' ? (
+              )}
+              {selectedRole === 'sales_head' && (
                 <>
-                  <li>• Can manage users and settings</li>
-                  <li>• Can update and delete all records</li>
-                  <li>• Access to audit logs</li>
-                  <li>• User management access</li>
+                  <li>• Access to all CRM modules</li>
+                  <li>• No access to Administration section</li>
+                  <li>• Can manage team records</li>
                 </>
-              ) : (
+              )}
+              {selectedRole === 'field_sales' && (
+                <>
+                  <li>• Access to all CRM modules</li>
+                  <li>• No access to Administration section</li>
+                  <li>• Can manage own records</li>
+                </>
+              )}
+              {selectedRole === 'inside_sales' && (
+                <>
+                  <li>• Access to Accounts, Contacts, Campaigns</li>
+                  <li>• No access to Deals or Action Items</li>
+                  <li>• No access to Administration section</li>
+                </>
+              )}
+              {selectedRole === 'user' && (
                 <>
                   <li>• Can view all records</li>
                   <li>• Can add new content</li>

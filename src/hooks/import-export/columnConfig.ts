@@ -8,103 +8,189 @@ interface ColumnConfig {
 // Define column mappings for different modules
 export const getColumnConfig = (table: string): ColumnConfig => {
   const configs: Record<string, ColumnConfig> = {
-    // Contacts - Removed website, industry, region, country, segment as per requirements
+    accounts: {
+      allowedColumns: [
+        'id',
+        'account_name',
+        'phone',
+        'website',
+        'industry',
+        'company_type',
+        'country',
+        'region',
+        'status',
+        'tags',
+        'description',
+        'account_owner',
+        'created_by',
+        'modified_by',
+        'created_time',
+        'modified_time',
+        'last_activity_time',
+        'currency'
+      ],
+      required: ['account_name'],
+      enums: {
+        industry: ['Automotive', 'Technology', 'Manufacturing', 'Healthcare', 'Finance', 'Retail', 'Other'],
+        company_type: ['OEM', 'Tier-1', 'Tier-2', 'Other'],
+        region: ['EU', 'US', 'ASIA', 'Other'],
+        status: ['New', 'Working', 'Qualified', 'Inactive'],
+        currency: ['EUR', 'USD', 'INR']
+      }
+    },
     contacts_module: {
       allowedColumns: [
-        'id', 'contact_name', 'company_name', 'position', 'email', 
-        'phone_no', 'linkedin', 'contact_source', 'tags', 
-        'description', 'last_contacted_at', 'account_id',
-        'contact_owner', 'created_by', 'modified_by', 'created_time', 'modified_time'
+        'id',
+        'contact_name',
+        'company_name',
+        'position',
+        'email',
+        'phone_no',
+        'linkedin',
+        'website',
+        'contact_source',
+        'industry',
+        'region',
+        'description',
+        'contact_owner',
+        'created_by',
+        'modified_by',
+        'created_time',
+        'modified_time',
+        'last_activity_time'
       ],
       required: ['contact_name'],
       enums: {
-        contact_source: ['Website', 'Referral', 'Cold Call', 'Email', 'Social Media', 'Trade Show', 'LinkedIn', 'Conference', 'Other']
+        contact_source: ['Website', 'Referral', 'Cold Call', 'Email', 'Social Media', 'Trade Show', 'Other'],
+        industry: ['Automotive', 'Technology', 'Healthcare', 'Finance', 'Manufacturing', 'Retail', 'Other']
       }
     },
     contacts: {
       allowedColumns: [
-        'id', 'contact_name', 'company_name', 'position', 'email', 
-        'phone_no', 'linkedin', 'contact_source', 'tags', 
-        'description', 'last_contacted_at', 'account_id',
-        'contact_owner', 'created_by', 'modified_by', 'created_time', 'modified_time'
+        'id',
+        'contact_name',
+        'company_name',
+        'position',
+        'email',
+        'phone_no',
+        'linkedin',
+        'website',
+        'contact_source',
+        'industry',
+        'region',
+        'description',
+        'contact_owner',
+        'created_by',
+        'modified_by',
+        'created_time',
+        'modified_time',
+        'last_activity_time'
       ],
       required: ['contact_name'],
       enums: {
-        contact_source: ['Website', 'Referral', 'Cold Call', 'Email', 'Social Media', 'Trade Show', 'LinkedIn', 'Conference', 'Other']
+        contact_source: ['Website', 'Referral', 'Cold Call', 'Email', 'Social Media', 'Trade Show', 'Other'],
+        industry: ['Automotive', 'Technology', 'Healthcare', 'Finance', 'Manufacturing', 'Retail', 'Other']
       }
     },
-    // Leads - Removed region, mobile_no, no_of_employees, annual_revenue (don't exist in DB), added account_id
     leads: {
       allowedColumns: [
-        'id', 'lead_name', 'company_name', 'position', 'email', 
-        'phone_no', 'linkedin', 'website', 'contact_source',
-        'lead_status', 'industry', 'country', 'description', 'account_id',
-        'contact_owner', 'created_by', 'modified_by', 'created_time', 'modified_time'
+        'lead_name',
+        'contact_name',
+        'company_name',
+        'position',
+        'email',
+        'phone_no',
+        'mobile_no',
+        'linkedin',
+        'website',
+        'contact_source',
+        'lead_status',
+        'industry',
+        'no_of_employees',
+        'annual_revenue',
+        'city',
+        'state',
+        'country',
+        'description',
+        'contact_owner',
+        'lead_owner'
       ],
-      required: ['lead_name'],
+      required: ['lead_name', 'contact_owner'],
       enums: {
-        contact_source: ['Website', 'Referral', 'Cold Call', 'Email', 'Social Media', 'Trade Show', 'LinkedIn', 'Conference', 'Other'],
-        lead_status: ['New', 'Contacted', 'Qualified', 'Nurture', 'Converted', 'Lost'],
-        industry: ['Automotive', 'Technology', 'Healthcare', 'Finance', 'Manufacturing', 'Retail', 'Energy', 'Telecom', 'Other']
+        contact_source: ['Website', 'Referral', 'Cold Call', 'Email', 'Social Media', 'Trade Show', 'Other'],
+        lead_status: ['New', 'Contacted', 'Qualified', 'Lost'],
+        industry: ['Automotive', 'Technology', 'Healthcare', 'Finance', 'Manufacturing', 'Retail', 'Other']
       }
     },
     meetings: {
       allowedColumns: [
-        'id', 'subject', 'description', 'start_time', 'end_time',
-        'status', 'outcome', 'notes', 'join_url',
-        'lead_id', 'contact_id', 'deal_id', 'account_id',
-        'created_by', 'created_at', 'updated_at'
+        'title',
+        'start_time',
+        'end_time',
+        'location',
+        'agenda',
+        'outcome',
+        'next_action',
+        'status',
+        'priority',
+        'participants',
+        'teams_link',
+        'lead_id',
+        'contact_id',
+        'deal_id',
+        'tags',
+        'follow_up_required',
+        'host'
       ],
-      required: ['subject', 'start_time', 'end_time'],
+      required: ['title', 'start_time', 'end_time'],
       enums: {
-        status: ['scheduled', 'in_progress', 'completed', 'cancelled', 'rescheduled'],
-        outcome: ['Successful', 'Follow-up Required', 'No Show', 'Rescheduled', 'Not Applicable']
+        status: ['scheduled', 'in_progress', 'completed', 'cancelled'],
+        priority: ['Low', 'Medium', 'High', 'Critical']
       }
     },
-    tasks: {
-      allowedColumns: [
-        'id', 'title', 'description', 'status', 'priority',
-        'due_date', 'due_time', 'module_type', 'category',
-        'account_id', 'contact_id', 'lead_id', 'deal_id', 'meeting_id',
-        'assigned_to', 'created_by', 'created_at', 'completed_at', 'updated_at'
-      ],
-      required: ['title'],
-      enums: {
-        status: ['open', 'in_progress', 'completed', 'deferred'],
-        priority: ['low', 'medium', 'high'],
-        module_type: ['account', 'contact', 'lead', 'deal', 'meeting', 'general']
-      }
-    },
-    // Accounts - Added last_activity_date, contact_count, deal_count for linked data
-    accounts: {
-      allowedColumns: [
-        'id', 'company_name', 'email', 'phone', 'company_type', 'industry',
-        'website', 'country', 'region', 'status', 'tags', 'notes',
-        'last_activity_date', 'contact_count', 'deal_count',
-        'account_owner', 'created_by', 'modified_by', 'created_at', 'updated_at'
-      ],
-      required: ['company_name'],
-      enums: {
-        status: ['New', 'Working', 'Warm', 'Hot', 'Nurture', 'Closed-Won', 'Closed-Lost'],
-        company_type: ['Customer', 'Partner', 'Prospect', 'Vendor', 'Other']
-      }
-    },
-    // Deals - Added account_id, contact_id
     deals: {
       allowedColumns: [
-        'id', 'deal_name', 'stage', 'internal_comment', 'project_name',
-        'lead_name', 'customer_name', 'region', 'lead_owner', 'priority',
-        'customer_need', 'relationship_strength', 'budget', 'probability',
-        'expected_closing_date', 'is_recurring', 'customer_challenges',
-        'business_value', 'decision_maker_level', 'total_contract_value',
-        'currency_type', 'start_date', 'end_date', 'project_duration',
-        'action_items', 'rfq_received_date', 'proposal_due_date', 'rfq_status',
-        'current_status', 'closing', 'won_reason', 'quarterly_revenue_q1',
-        'quarterly_revenue_q2', 'quarterly_revenue_q3', 'quarterly_revenue_q4',
-        'total_revenue', 'signed_contract_date', 'implementation_start_date',
-        'handoff_status', 'lost_reason', 'need_improvement', 'drop_reason',
-        'account_id', 'contact_id',
-        'created_by', 'modified_by', 'created_at', 'modified_at'
+        'deal_name',
+        'stage',
+        'internal_comment',
+        'project_name',
+        'lead_name',
+        'customer_name',
+        'region',
+        'lead_owner',
+        'priority',
+        'customer_need',
+        'relationship_strength',
+        'budget',
+        'probability',
+        'expected_closing_date',
+        'is_recurring',
+        'customer_challenges',
+        'business_value',
+        'decision_maker_level',
+        'total_contract_value',
+        'currency_type',
+        'start_date',
+        'end_date',
+        'project_duration',
+        'action_items',
+        'rfq_received_date',
+        'proposal_due_date',
+        'rfq_status',
+        'current_status',
+        'closing',
+        'won_reason',
+        'quarterly_revenue_q1',
+        'quarterly_revenue_q2',
+        'quarterly_revenue_q3',
+        'quarterly_revenue_q4',
+        'total_revenue',
+        'signed_contract_date',
+        'implementation_start_date',
+        'handoff_status',
+        'lost_reason',
+        'need_improvement',
+        'drop_reason'
       ],
       required: ['deal_name', 'stage'],
       enums: {

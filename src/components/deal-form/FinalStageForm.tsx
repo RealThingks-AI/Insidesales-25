@@ -44,24 +44,21 @@ export const FinalStageForm = ({ formData, onFieldChange, fieldErrors, stage }: 
 
   const fields = getFieldsForStage(stage);
 
-  const fullWidthFields = ['won_reason', 'lost_reason', 'need_improvement', 'drop_reason'];
-
   return (
     <Card>
-      <CardHeader className="pb-4">
-        <CardTitle className="text-lg font-semibold">{stage} Stage</CardTitle>
+      <CardHeader>
+        <CardTitle className="text-lg">{stage} Stage</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {fields.map(field => (
-            <div key={field} className={fullWidthFields.includes(field) ? 'md:col-span-2 lg:col-span-3' : ''}>
-              <FormFieldRenderer
-                field={field}
-                value={formData[field as keyof Deal]}
-                onChange={onFieldChange}
-                error={fieldErrors[field]}
-              />
-            </div>
+            <FormFieldRenderer
+              key={field}
+              field={field}
+              value={formData[field as keyof Deal]}
+              onChange={onFieldChange}
+              error={fieldErrors[field]}
+            />
           ))}
         </div>
       </CardContent>

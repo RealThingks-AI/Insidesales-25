@@ -13,7 +13,6 @@ interface TemplatePreviewModalProps {
   } | null;
 }
 
-// Sample data for preview
 const sampleData: Record<string, string> = {
   '{{contact_name}}': 'John Doe',
   '{{company_name}}': 'Acme Corporation',
@@ -54,7 +53,6 @@ const TemplatePreviewModal = ({ open, onOpenChange, template }: TemplatePreviewM
 
         <div className="flex-1 overflow-hidden">
           <div className="border rounded-lg overflow-hidden bg-background">
-            {/* Email Header */}
             <div className="border-b p-4 bg-muted/30">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -69,10 +67,9 @@ const TemplatePreviewModal = ({ open, onOpenChange, template }: TemplatePreviewM
               </div>
             </div>
 
-            {/* Email Body */}
             <ScrollArea className="h-[350px]">
               <div 
-                className="p-4 text-sm prose prose-sm max-w-none dark:prose-invert [&_p]:mb-2 [&_ul]:list-disc [&_ul]:ml-4 [&_li]:mb-1 [&_br]:block"
+                className="p-4 text-sm whitespace-pre-wrap"
                 dangerouslySetInnerHTML={{ __html: renderedBody }}
               />
             </ScrollArea>

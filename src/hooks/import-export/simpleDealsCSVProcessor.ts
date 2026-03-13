@@ -1,7 +1,7 @@
 
 import { DealsCSVProcessor } from './dealsCSVProcessor';
 
-// Exact field order as specified - Added account_id, contact_id; removed action_items_json
+// Exact field order as specified, including action items
 const DEALS_EXPORT_FIELDS = [
   'id', 'deal_name', 'stage', 'probability', 'drop_reason', 'created_by', 'modified_by', 
   'created_at', 'modified_at', 'lead_name', 'lead_owner', 'project_name', 'customer_name', 
@@ -12,7 +12,7 @@ const DEALS_EXPORT_FIELDS = [
   'total_contract_value', 'project_duration', 'quarterly_revenue_q1', 'quarterly_revenue_q2', 
   'quarterly_revenue_q3', 'quarterly_revenue_q4', 'total_revenue', 'closing', 
   'signed_contract_date', 'implementation_start_date', 'handoff_status', 
-  'rfq_received_date', 'proposal_due_date', 'rfq_status', 'account_id', 'contact_id'
+  'rfq_received_date', 'proposal_due_date', 'rfq_status', 'action_items_json'
 ];
 
 interface DealsProcessOptions {
