@@ -22,7 +22,18 @@ import Notifications from "./pages/Notifications";
 import { useState } from "react";
 import { ShieldAlert } from "lucide-react";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 // Access Denied component
 const AccessDenied = () => (
