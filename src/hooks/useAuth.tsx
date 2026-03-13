@@ -112,7 +112,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Only get initial session if not already handled by auth state change
     const getInitialSession = async () => {
-      if (!mounted || sessionFetched) return;
+      if (!mounted || sessionFetchedRef.current) return;
       
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -124,7 +124,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           cleanupAuthState();
           setSession(null);
           setUser(null);
-        } else if (session && !sessionFetched) {
+        } else if (session && !sessionFetchedRef.current) {
           setSession(session);
           setUser(session.user);
         } else if (!session) {
@@ -135,7 +135,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (!mounted) return;
         console.error('Session retrieval failed:', error);
       } finally {
-        if (mounted && !sessionFetched) {
+        if (mounted && !sessionFetchedRef.current) {
           setLoading(false);
         }
       }
