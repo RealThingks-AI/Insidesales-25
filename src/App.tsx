@@ -70,7 +70,13 @@ const PageAccessGuard = ({ children }: { children: React.ReactNode }) => {
 
 // Layout Component for all pages with fixed sidebar
 const FixedSidebarLayout = ({ children }: { children: React.ReactNode }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try { return localStorage.getItem('sidebar-open') === 'true'; } catch { return false; }
+  });
+  const handleSidebarToggle = (open: boolean) => {
+    setSidebarOpen(open);
+    try { localStorage.setItem('sidebar-open', String(open)); } catch {}
+  };
   const location = useLocation();
   
   const controlledScrollRoutes = ['/action-items', '/contacts', '/deals', '/campaigns', '/settings', '/notifications', '/', '/accounts'];
