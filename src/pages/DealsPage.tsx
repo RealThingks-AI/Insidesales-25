@@ -248,11 +248,7 @@ const DealsPage = () => {
     setIsCreating(false);
   };
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [user, authLoading, navigate]);
+  // Redundant auth redirect removed — ProtectedRoute handles this
 
   // Handle highlight from notification click
   useEffect(() => {

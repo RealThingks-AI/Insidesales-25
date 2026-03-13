@@ -67,12 +67,22 @@ export function useCampaigns() {
 
   const deleteCampaign = useMutation({
     mutationFn: async (id: string) => {
+      // Delete child records first to avoid orphans
+      await Promise.all([
+        supabase.from('campaign_contacts').delete().eq('campaign_id', id),
+        supabase.from('campaign_accounts').delete().eq('campaign_id', id),
+        supabase.from('campaign_communications').delete().eq('campaign_id', id),
+        supabase.from('campaign_email_templates').delete().eq('campaign_id', id),
+        supabase.from('campaign_phone_scripts').delete().eq('campaign_id', id),
+        supabase.from('campaign_materials').delete().eq('campaign_id', id),
+      ]);
       const { error } = await supabase.from('campaigns').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       toast({ title: 'Campaign deleted' });
+      logDelete('campaigns', id);
     },
     onError: (err: any) => {
       toast({ title: 'Error deleting campaign', description: err.message, variant: 'destructive' });

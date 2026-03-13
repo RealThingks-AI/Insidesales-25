@@ -85,7 +85,7 @@ const FixedSidebarLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="h-screen flex w-full overflow-hidden">
       <div className="fixed top-0 left-0 z-50 h-full">
-        <AppSidebar isFixed={true} isOpen={sidebarOpen} onToggle={setSidebarOpen} />
+        <AppSidebar isFixed={true} isOpen={sidebarOpen} onToggle={handleSidebarToggle} />
       </div>
       <main 
         className="flex-1 bg-background h-screen overflow-hidden"

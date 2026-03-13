@@ -162,12 +162,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.warn('Sign out error:', error);
       }
       
-      // Force redirect using replace for Safari
-      window.location.replace('/auth');
+      // State will be cleared by onAuthStateChange SIGNED_OUT event
+      // React Router's AuthRoute handles redirect
+      setSession(null);
+      setUser(null);
     } catch (error) {
       console.error('Error signing out:', error);
-      // Force redirect even if sign out fails
-      window.location.replace('/auth');
+      // Force clear state even if sign out fails
+      setSession(null);
+      setUser(null);
     }
   };
 

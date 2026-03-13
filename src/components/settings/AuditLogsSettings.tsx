@@ -67,7 +67,7 @@ const AuditLogsSettings = () => {
         .from('security_audit_log')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(5000);
+        .limit(1000);
 
       if (error) throw error;
 

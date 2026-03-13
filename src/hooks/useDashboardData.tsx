@@ -83,7 +83,7 @@ export const useDashboardData = () => {
       });
 
       // Process action items
-      const actionStatuses = ['Open', 'In Progress', 'Completed', 'Cancelled'];
+      const actionStatuses = ['Open', 'In Progress', 'Completed', 'Deferred'];
       const actionCounts = actionStatuses.map(status => ({
         status,
         count: (actionItemsRes.data || []).filter(a => a.status === status).length,
