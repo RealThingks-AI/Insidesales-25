@@ -54,7 +54,19 @@ export const useSecureDeals = () => {
       console.log('Updates:', updates);
       
       // Get the existing deal for audit logging
-      const existingDeal = deals.find(d => d.id === id);
+      let existingDeal = deals.find(d => d.id === id);
+      
+      // If not found in local state, fetch from DB before update
+      if (!existingDeal) {
+        try {
+          const { data } = await supabase
+            .from('deals')
+            .select('*')
+            .eq('id', id)
+            .single();
+          if (data) existingDeal = data as Deal;
+        } catch { /* proceed without old data */ }
+      }
       
       const query = supabase
         .from('deals')

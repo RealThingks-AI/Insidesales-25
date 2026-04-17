@@ -82,7 +82,7 @@ const EmailHistorySettings = () => {
   const stats = useMemo(() => {
     const total = emails.length;
     const bounced = emails.filter(e => e.bounce_type || e.status === 'bounced').length;
-    const opened = emails.filter(e => (e.open_count ?? 0) > 0 && e.status !== 'bounced' && !e.bounce_type).length;
+    const opened = emails.filter(e => (e.open_count ?? 0) > 0).length;
     const replied = emails.filter(e => e.status === 'replied' || (e.reply_count ?? 0) > 0).length;
     const nonBounced = total - bounced;
     return {

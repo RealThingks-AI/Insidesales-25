@@ -96,6 +96,7 @@ export function useModuleRecordNames(items: Array<{ module_type: string; module_
       const accountIds = items.filter(i => i.module_type === 'accounts' && i.module_id).map(i => i.module_id!);
       const contactIds = items.filter(i => i.module_type === 'contacts' && i.module_id).map(i => i.module_id!);
       const dealIds = items.filter(i => i.module_type === 'deals' && i.module_id).map(i => i.module_id!);
+      const campaignIds = items.filter(i => i.module_type === 'campaigns' && i.module_id).map(i => i.module_id!);
 
       const promises = [];
 
@@ -127,6 +128,17 @@ export function useModuleRecordNames(items: Array<{ module_type: string; module_
             .then(({ data }) => {
               (data || []).forEach((d: any) => {
                 names[`deals:${d.id}`] = d.deal_name;
+              });
+            })
+        );
+      }
+
+      if (campaignIds.length > 0) {
+        promises.push(
+          supabase.from('campaigns').select('id, campaign_name').in('id', campaignIds)
+            .then(({ data }) => {
+              (data || []).forEach((c: any) => {
+                names[`campaigns:${c.id}`] = c.campaign_name;
               });
             })
         );

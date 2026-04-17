@@ -67,12 +67,12 @@ const AuditLogsSettings = () => {
         .from('security_audit_log')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .limit(5000);
 
       if (error) throw error;
 
       const excluded = getExcludedActions();
-      const transformedLogs: AuditLog[] = (data || [])
+      let transformedLogs: AuditLog[] = (data || [])
         .filter(log => !excluded.includes(log.action))
         .map(log => ({
           id: log.id,
@@ -84,6 +84,83 @@ const AuditLogsSettings = () => {
           ip_address: log.ip_address ? String(log.ip_address) : undefined,
           created_at: log.created_at
         }));
+
+      const legacyActionItemIds = Array.from(new Set(
+        transformedLogs
+          .filter(log => log.resource_type === 'action_items' && log.action === 'BULK_UPDATE')
+          .flatMap(log => {
+            const existingTitles = log.details?.update_data?.item_titles || log.details?.item_titles;
+            if (Array.isArray(existingTitles) && existingTitles.length > 0) return [];
+
+            const recordIds = log.details?.update_data?.record_ids || log.details?.record_ids;
+            if (Array.isArray(recordIds) && recordIds.length > 0) return recordIds;
+
+            return log.resource_id ? [log.resource_id] : [];
+          })
+          .filter(Boolean)
+      ));
+
+      if (legacyActionItemIds.length > 0) {
+        const { data: actionItemRecords, error: actionItemError } = await supabase
+          .from('action_items')
+          .select('id, title')
+          .in('id', legacyActionItemIds);
+
+        if (actionItemError) throw actionItemError;
+
+        const titleMap = Object.fromEntries((actionItemRecords || []).map(item => [item.id, item.title]));
+
+        transformedLogs = transformedLogs.map(log => {
+          if (log.resource_type !== 'action_items' || log.action !== 'BULK_UPDATE') return log;
+
+          const recordCount = log.details?.record_count ?? 1;
+          const existingTitles = log.details?.update_data?.item_titles || log.details?.item_titles;
+          const recordIds = log.details?.update_data?.record_ids || log.details?.record_ids || (log.resource_id ? [log.resource_id] : []);
+          
+          // Resolve missing titles from DB
+          let resolvedTitles = existingTitles;
+          if (!Array.isArray(existingTitles) || existingTitles.length === 0) {
+            resolvedTitles = Array.isArray(recordIds)
+              ? recordIds.map((id: string) => titleMap[id]).filter(Boolean)
+              : [];
+          }
+
+          // Normalize single-record BULK_UPDATE → UPDATE
+          if (recordCount === 1 || (Array.isArray(recordIds) && recordIds.length === 1)) {
+            const title = resolvedTitles?.[0] || '';
+            const targetStatus = log.details?.update_data?.status || log.details?.status;
+            return {
+              ...log,
+              action: 'UPDATE',
+              resource_id: log.resource_id || recordIds?.[0],
+              details: {
+                ...(log.details || {}),
+                operation: 'UPDATE',
+                old_data: { title, status: null, module_type: 'action_items' },
+                updated_fields: targetStatus ? { status: targetStatus } : log.details?.update_data,
+                field_changes: targetStatus ? { status: { old: null, new: targetStatus } } : {},
+                module: 'Action_items',
+              },
+            };
+          }
+
+          // Multi-record: just attach resolved titles
+          if (!Array.isArray(resolvedTitles) || resolvedTitles.length === 0) return log;
+          return {
+            ...log,
+            resource_id: log.resource_id || recordIds[0],
+            details: {
+              ...(log.details || {}),
+              item_titles: resolvedTitles,
+              update_data: {
+                ...(log.details?.update_data || {}),
+                item_titles: resolvedTitles,
+                record_ids: recordIds,
+              },
+            },
+          };
+        });
+      }
 
       setLogs(transformedLogs);
     } catch (error: any) {
@@ -249,6 +326,11 @@ const AuditLogsSettings = () => {
         byModule={stats.byModule}
         byUser={stats.byUser}
         userNames={userNames}
+        onDatePreset={(from, to) => { setDateFrom(from); setDateTo(to); }}
+        onModuleFilter={setModuleFilter}
+        activeModuleFilter={moduleFilter}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
       />
 
       {/* Main Log Table */}
@@ -291,8 +373,8 @@ const AuditLogsSettings = () => {
             </div>
           ) : (
             <>
-              <div className="rounded-md border">
-                <Table>
+              <div className="rounded-md border overflow-hidden">
+                <Table className="table-fixed w-full">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[10%] py-2 text-xs">Activity</TableHead>
@@ -320,8 +402,8 @@ const AuditLogsSettings = () => {
                           <TableCell className="py-1.5 text-xs">
                             {getModuleName(log)}
                           </TableCell>
-                          <TableCell className="py-1.5 text-xs truncate">
-                            {summary}
+                          <TableCell className="py-1.5 text-xs">
+                            <span className="block break-words whitespace-normal">{summary}</span>
                           </TableCell>
                           <TableCell className="py-1.5">
                             <div className="flex items-center gap-1.5">

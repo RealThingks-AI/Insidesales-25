@@ -15,7 +15,6 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useState } from "react";
 import { useNotifications } from "@/hooks/useNotifications";
-import { usePermissions } from "@/contexts/PermissionsContext";
 import {
   Tooltip,
   TooltipContent,
@@ -32,7 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const allMenuItems = [
+const menuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Accounts", url: "/accounts", icon: Building2 },
   { title: "Contacts", url: "/contacts", icon: Users },
@@ -55,11 +54,8 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
   const { user, signOut } = useAuth();
   const currentPath = location.pathname;
   const { unreadCount } = useNotifications();
-  const { hasPageAccess } = usePermissions();
 
-  // Filter menu items based on user's page access
-  const menuItems = allMenuItems.filter(item => hasPageAccess(item.url));
-
+  // Use external state if provided (for fixed mode), otherwise use internal state
   const sidebarOpen = isFixed ? (isOpen ?? false) : isPinned;
 
   const isActive = (path: string) => {
@@ -70,6 +66,7 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
   };
 
   const handleSignOut = async () => {
+    console.log('Sign out clicked');
     await signOut();
   };
 
@@ -187,81 +184,77 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
       {/* Bottom Section */}
       <div className="border-t border-sidebar-border p-3 space-y-1">
         {/* Notification Bell */}
-        {hasPageAccess('/notifications') && (
-          <div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleNotificationClick}
-                  className={`flex items-center h-10 w-full rounded-lg transition-colors font-medium ${
-                    currentPath === '/notifications' 
-                      ? 'text-sidebar-accent-foreground bg-sidebar-accent' 
-                      : 'text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50'
+        <div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleNotificationClick}
+                className={`flex items-center h-10 w-full rounded-lg transition-colors font-medium ${
+                  currentPath === '/notifications' 
+                    ? 'text-sidebar-accent-foreground bg-sidebar-accent' 
+                    : 'text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50'
+                }`}
+              >
+                <div className="w-10 h-10 flex items-center justify-center flex-shrink-0 relative">
+                  <Bell className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </div>
+                <div 
+                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
+                    sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
                   }`}
+                  style={{ 
+                    fontFamily: 'Inter, system-ui, sans-serif',
+                    fontSize: '14px'
+                  }}
                 >
-                  <div className="w-10 h-10 flex items-center justify-center flex-shrink-0 relative">
-                    <Bell className="w-5 h-5" />
-                    {unreadCount > 0 && (
-                      <span className="absolute top-1 right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
-                        {unreadCount > 99 ? '99+' : unreadCount}
-                      </span>
-                    )}
-                  </div>
-                  <div 
-                    className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
-                      sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
-                    }`}
-                    style={{ 
-                      fontFamily: 'Inter, system-ui, sans-serif',
-                      fontSize: '14px'
-                    }}
-                  >
-                    Notifications
-                  </div>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
-                <p>Notifications</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        )}
+                  Notifications
+                </div>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
+              <p>Notifications</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
 
         {/* Settings */}
-        {hasPageAccess('/settings') && (
-          <div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => navigate('/settings')}
-                  className={`flex items-center h-10 w-full rounded-lg transition-colors font-medium ${
-                    currentPath === '/settings' || currentPath.startsWith('/settings')
-                      ? 'text-sidebar-accent-foreground bg-sidebar-accent' 
-                      : 'text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50'
+        <div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => navigate('/settings')}
+                className={`flex items-center h-10 w-full rounded-lg transition-colors font-medium ${
+                  currentPath === '/settings' || currentPath.startsWith('/settings')
+                    ? 'text-sidebar-accent-foreground bg-sidebar-accent' 
+                    : 'text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50'
+                }`}
+              >
+                <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
+                  <Settings className="w-5 h-5" />
+                </div>
+                <div 
+                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
+                    sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
                   }`}
+                  style={{ 
+                    fontFamily: 'Inter, system-ui, sans-serif',
+                    fontSize: '14px'
+                  }}
                 >
-                  <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-                    <Settings className="w-5 h-5" />
-                  </div>
-                  <div 
-                    className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
-                      sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
-                    }`}
-                    style={{ 
-                      fontFamily: 'Inter, system-ui, sans-serif',
-                      fontSize: '14px'
-                    }}
-                  >
-                    Settings
-                  </div>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
-                <p>Settings</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        )}
+                  Settings
+                </div>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
+              <p>Settings</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
 
         {/* Pin Toggle Button */}
         <div>

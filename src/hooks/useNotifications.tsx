@@ -66,15 +66,15 @@ export const useNotifications = () => {
       setNotifications(typedNotifications);
       setCurrentPage(page);
       
-      // Get total unread count separately (head:true = no rows transferred)
-      const { count: unreadTotal, error: unreadError } = await supabase
+      // Get total unread count separately
+      const { data: unreadData, error: unreadError } = await supabase
         .from('notifications')
-        .select('*', { count: 'exact', head: true })
+        .select('id')
         .eq('user_id', user.id)
         .eq('status', 'unread');
       
       if (!unreadError) {
-        setUnreadCount(unreadTotal || 0);
+        setUnreadCount(unreadData?.length || 0);
       }
     } catch (error) {
       console.error('Error fetching notifications:', error);

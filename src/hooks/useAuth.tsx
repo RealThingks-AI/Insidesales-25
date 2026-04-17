@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     let mounted = true;
-    const sessionFetchedRef = { current: false };
+    let sessionFetched = false;
 
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -97,6 +97,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         if (event === 'SIGNED_OUT') {
           cleanupAuthState();
+          // Use replace instead of href for Safari compatibility
+          if (window.location.pathname !== '/auth') {
+            window.location.replace('/auth');
+          }
+        }
+        
+        if (event === 'SIGNED_IN' && session) {
+          // Ensure we're on the right page after successful login
+          if (window.location.pathname === '/auth') {
+            window.location.replace('/');
+          }
         }
         
         if (event === 'TOKEN_REFRESHED' && session) {
@@ -106,13 +117,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
         
         setLoading(false);
-        sessionFetchedRef.current = true;
+        sessionFetched = true;
       }
     );
 
     // Only get initial session if not already handled by auth state change
     const getInitialSession = async () => {
-      if (!mounted || sessionFetchedRef.current) return;
+      if (!mounted || sessionFetched) return;
       
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -124,7 +135,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           cleanupAuthState();
           setSession(null);
           setUser(null);
-        } else if (session && !sessionFetchedRef.current) {
+        } else if (session && !sessionFetched) {
           setSession(session);
           setUser(session.user);
         } else if (!session) {
@@ -135,7 +146,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (!mounted) return;
         console.error('Session retrieval failed:', error);
       } finally {
-        if (mounted && !sessionFetchedRef.current) {
+        if (mounted && !sessionFetched) {
           setLoading(false);
         }
       }
@@ -162,15 +173,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.warn('Sign out error:', error);
       }
       
-      // State will be cleared by onAuthStateChange SIGNED_OUT event
-      // React Router's AuthRoute handles redirect
-      setSession(null);
-      setUser(null);
+      // Force redirect using replace for Safari
+      window.location.replace('/auth');
     } catch (error) {
       console.error('Error signing out:', error);
-      // Force clear state even if sign out fails
-      setSession(null);
-      setUser(null);
+      // Force redirect even if sign out fails
+      window.location.replace('/auth');
     }
   };
 

@@ -6,5 +6,5 @@ verify_jwt = false
 [functions.daily-action-reminders]
 verify_jwt = false
 
-[functions.send-campaign-email]
+[functions.check-email-replies]
 verify_jwt = false

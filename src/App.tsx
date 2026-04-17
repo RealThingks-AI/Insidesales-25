@@ -5,87 +5,37 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { usePermissions } from "@/contexts/PermissionsContext";
 import SecurityEnhancedApp from "@/components/SecurityEnhancedApp";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppSidebar } from "@/components/AppSidebar";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import Contacts from "./pages/Contacts";
+// Leads module removed - leads are now managed under Deals Lead stage
 import DealsPage from "./pages/DealsPage";
 import Campaigns from "./pages/Campaigns";
+import CampaignDetail from "./pages/CampaignDetail";
 import ActionItems from "./pages/ActionItems";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import Notifications from "./pages/Notifications";
 import { useState } from "react";
-import { ShieldAlert } from "lucide-react";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-    },
-    mutations: {
-      retry: 1,
-    },
-  },
-});
-
-// Access Denied component
-const AccessDenied = () => (
-  <div className="h-full flex items-center justify-center">
-    <div className="text-center max-w-md">
-      <ShieldAlert className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-      <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-      <p className="text-muted-foreground">
-        You don't have permission to access this page. Contact your administrator if you need access.
-      </p>
-    </div>
-  </div>
-);
-
-// PageAccessGuard — pure in-memory check, zero network requests
-const PageAccessGuard = ({ children }: { children: React.ReactNode }) => {
-  const { pathname } = useLocation();
-  const { hasPageAccess, loading } = usePermissions();
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
-  if (!hasPageAccess(pathname)) {
-    return <AccessDenied />;
-  }
-
-  return <>{children}</>;
-};
+const queryClient = new QueryClient();
 
 // Layout Component for all pages with fixed sidebar
 const FixedSidebarLayout = ({ children }: { children: React.ReactNode }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    try { return localStorage.getItem('sidebar-open') === 'true'; } catch { return false; }
-  });
-  const handleSidebarToggle = (open: boolean) => {
-    setSidebarOpen(open);
-    try { localStorage.setItem('sidebar-open', String(open)); } catch {}
-  };
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Start collapsed
   const location = useLocation();
   
-  const controlledScrollRoutes = ['/action-items', '/contacts', '/deals', '/campaigns', '/settings', '/notifications', '/', '/accounts'];
-  const needsControlledScroll = controlledScrollRoutes.includes(location.pathname);
+  // These routes need overflow-hidden so they can control their own scrolling
+  const controlledScrollRoutes = ['/action-items', '/contacts', '/deals', '/settings', '/notifications', '/', '/accounts', '/campaigns'];
+  const needsControlledScroll = controlledScrollRoutes.includes(location.pathname) || location.pathname.startsWith('/campaigns/');
   
   return (
     <div className="h-screen flex w-full overflow-hidden">
       <div className="fixed top-0 left-0 z-50 h-full">
-        <AppSidebar isFixed={true} isOpen={sidebarOpen} onToggle={handleSidebarToggle} />
+        <AppSidebar isFixed={true} isOpen={sidebarOpen} onToggle={setSidebarOpen} />
       </div>
       <main 
         className="flex-1 bg-background h-screen overflow-hidden"
@@ -122,16 +72,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/auth" replace />;
   }
 
+  // Use FixedSidebarLayout for all protected routes
   return (
     <FixedSidebarLayout>
-      <PageAccessGuard>
-        {children}
-      </PageAccessGuard>
+      {children}
     </FixedSidebarLayout>
   );
 };
 
-// Auth Route Component
+// Auth Route Component (redirects if already authenticated)
 const AuthRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
 
@@ -153,7 +102,7 @@ const AuthRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// App Router Component
+// App Router Component - inside the auth context
 const AppRouter = () => (
   <BrowserRouter>
     <Routes>
@@ -177,6 +126,7 @@ const AppRouter = () => (
           <Contacts />
         </ProtectedRoute>
       } />
+      
       <Route path="/deals" element={
         <ProtectedRoute>
           <DealsPage />
@@ -185,6 +135,11 @@ const AppRouter = () => (
       <Route path="/campaigns" element={
         <ProtectedRoute>
           <Campaigns />
+        </ProtectedRoute>
+      } />
+      <Route path="/campaigns/:id" element={
+        <ProtectedRoute>
+          <CampaignDetail />
         </ProtectedRoute>
       } />
       <Route path="/action-items" element={
@@ -212,17 +167,15 @@ const AppRouter = () => (
 );
 
 const App = () => (
-  <ErrorBoundary>
-    <QueryClientProvider client={queryClient}>
-      <SecurityEnhancedApp>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <AppRouter />
-        </TooltipProvider>
-      </SecurityEnhancedApp>
-    </QueryClientProvider>
-  </ErrorBoundary>
+  <QueryClientProvider client={queryClient}>
+    <SecurityEnhancedApp>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <AppRouter />
+      </TooltipProvider>
+    </SecurityEnhancedApp>
+  </QueryClientProvider>
 );
 
 export default App;

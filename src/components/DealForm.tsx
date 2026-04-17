@@ -13,7 +13,6 @@ import { DealStageForm } from "./deal-form/DealStageForm";
 import { DealActionItemsModal } from "./DealActionItemsModal";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
-import { useAuth } from "@/hooks/useAuth";
 
 interface DealFormProps {
   deal: Deal | null;
@@ -35,11 +34,24 @@ interface DealFormProps {
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const { toast } = useToast();
-  const { user } = useAuth();
 
-  // Track current user id for default Lead Owner
-  const currentUserId = isCreating ? user?.id || null : null;
+  // NEW: Track current user id for default Lead Owner
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { displayNames: currentUserDisplayNames } = useUserDisplayNames(currentUserId ? [currentUserId] : []);
+
+  // Fetch current user once when creating a deal
+  useEffect(() => {
+    if (!isCreating) return;
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (error) {
+        console.warn("DealForm: Failed to get current user for lead owner default:", error);
+        return;
+      }
+      const uid = data?.user?.id || null;
+      setCurrentUserId(uid);
+      console.log("DealForm: currentUserId for default lead owner:", uid);
+    });
+  }, [isCreating]);
 
   // Auto-fill Lead Owner for new deal creation if missing/Unknown
   useEffect(() => {
@@ -55,14 +67,14 @@ interface DealFormProps {
         // Respect user-entered value or previously resolved name
         return prev;
       }
-      
+      console.log("DealForm: Auto-setting lead_owner to current user's display name:", name);
       return { ...prev, lead_owner: name };
     });
   }, [isCreating, currentUserId, currentUserDisplayNames]);
 
   useEffect(() => {
     if (deal) {
-      
+      console.log("Setting form data from deal:", deal);
       // Initialize revenue fields with 0 if they are null
       const initializedDeal = {
         ...deal,
@@ -97,6 +109,10 @@ interface DealFormProps {
   }, [formData, currentStage, showValidationErrors]);
 
   const handleFieldChange = (field: string, value: any) => {
+    console.log(`=== FIELD UPDATE DEBUG ===`);
+    console.log(`Updating field: ${field}`);
+    console.log(`New value:`, value, `(type: ${typeof value})`);
+    console.log(`Current formData before update:`, formData);
     
     setFormData(prev => {
       const updated = { ...prev };
@@ -106,7 +122,8 @@ interface DealFormProps {
     });
   };
 
-  const handleContactSelect = (_contact: any) => {
+  const handleContactSelect = (contact: any) => {
+    console.log("Selected contact:", contact);
     // The contact selection is handled in the FormFieldRenderer component
   };
 
@@ -115,6 +132,9 @@ interface DealFormProps {
     setLoading(true);
 
     try {
+      console.log("=== DEAL FORM SUBMIT DEBUG ===");
+      console.log("Current stage:", currentStage);
+      console.log("Form data before save:", formData);
       
       // No validation - allow saving with any data
       const saveData = {
@@ -124,8 +144,11 @@ interface DealFormProps {
         modified_by: deal?.created_by || formData.created_by
       };
       
+      console.log("Save data:", saveData);
+      
       await onSave(saveData);
       
+      console.log("Save successful");
       toast({
         title: "Success",
         description: isCreating ? "Deal created successfully" : "Deal updated successfully",
@@ -156,6 +179,7 @@ interface DealFormProps {
     try {
       const nextStage = getNextStage(currentStage);
       if (nextStage) {
+        console.log(`Moving deal from ${currentStage} to ${nextStage}`);
         
         const updatedData = {
           ...formData,
@@ -193,6 +217,7 @@ interface DealFormProps {
     setLoading(true);
     
     try {
+      console.log(`Moving deal to final stage: ${finalStage}`);
       
       const updatedData = {
         ...formData,
@@ -230,6 +255,7 @@ interface DealFormProps {
     setLoading(true);
     
     try {
+      console.log(`Moving deal from ${currentStage} to ${targetStage}`);
       
       const updatedData = {
         ...formData,
@@ -317,7 +343,9 @@ interface DealFormProps {
                     variant="ghost" 
                     size="sm"
                     onClick={() => {
+                      console.log("Toggle button clicked! Current state:", showPreviousStages);
                       setShowPreviousStages(!showPreviousStages);
+                      console.log("New state will be:", !showPreviousStages);
                     }}
                   >
                     {showPreviousStages ? 'Hide Previous Stages' : 'Show All Stages'}

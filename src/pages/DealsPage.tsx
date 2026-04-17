@@ -51,14 +51,21 @@ const DealsPage = () => {
 
   const handleUpdateDeal = async (dealId: string, updates: Partial<Deal>) => {
     try {
+      console.log("=== HANDLE UPDATE DEAL DEBUG ===");
+      console.log("Deal ID:", dealId);
+      console.log("Updates:", updates);
+      
       // Get the existing deal for audit logging
       const existingDeal = deals.find(deal => deal.id === dealId);
       
+      // Ensure we have all required fields for the update
       const updateData = {
         ...updates,
         modified_at: new Date().toISOString(),
         modified_by: user?.id
       };
+
+      console.log("Final update data:", updateData);
 
       const { data, error } = await supabase
         .from('deals')
@@ -67,7 +74,12 @@ const DealsPage = () => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
+
+      console.log("Update successful, data:", data);
       
       // Log update operation
       await logUpdate('deals', dealId, updates, existingDeal);
@@ -94,15 +106,21 @@ const DealsPage = () => {
 
   const handleSaveDeal = async (dealData: Partial<Deal>) => {
     try {
+      console.log("=== SAVE DEAL DEBUG ===");
+      console.log("Is creating:", isCreating);
+      console.log("Deal data:", dealData);
+      
       if (isCreating) {
         const insertData = { 
           ...dealData, 
           deal_name: dealData.project_name || dealData.deal_name || 'Untitled Deal',
-          created_by: user?.id,
+          created_by: user?.id, // Ensure created_by is set for RLS
           modified_by: user?.id,
           created_at: new Date().toISOString(),
           modified_at: new Date().toISOString()
         };
+        
+        console.log("Insert data:", insertData);
 
         const { data, error } = await supabase
           .from('deals')
@@ -111,6 +129,7 @@ const DealsPage = () => {
           .single();
 
         if (error) {
+          console.error("Insert error:", error);
           
           // Check for RLS policy violation
           if (error.message?.includes('row-level security') || 
@@ -128,6 +147,8 @@ const DealsPage = () => {
           throw error;
         }
 
+        console.log("Insert successful:", data);
+
         // Log create operation
         await logCreate('deals', data.id, dealData);
 
@@ -140,6 +161,8 @@ const DealsPage = () => {
           modified_by: user?.id
         };
         
+        console.log("Update data for existing deal:", updateData);
+        
         await handleUpdateDeal(selectedDeal.id, updateData);
         await fetchDeals();
       }
@@ -151,6 +174,9 @@ const DealsPage = () => {
 
   const handleDeleteDeals = async (dealIds: string[]) => {
     try {
+      console.log("Attempting to delete deals:", dealIds);
+
+      // Request the IDs of the rows that were actually deleted (RLS will filter)
       const { data, error } = await supabase
         .from('deals')
         .delete()
@@ -158,6 +184,7 @@ const DealsPage = () => {
         .select('id');
 
       if (error) {
+        console.error("Delete error:", error);
         toast({
           title: "Error",
           description: "Failed to delete deals",
@@ -168,6 +195,9 @@ const DealsPage = () => {
 
       const deletedIds = (data || []).map((row: { id: string }) => row.id);
       const notDeleted = dealIds.filter(id => !deletedIds.includes(id));
+
+      console.log("Deleted IDs:", deletedIds);
+      console.log("Not deleted due to RLS/permissions:", notDeleted);
 
       // Update local state only for deals that were actually deleted
       if (deletedIds.length > 0) {
@@ -225,6 +255,7 @@ const DealsPage = () => {
   const handleImportDeals = async (importedDeals: (Partial<Deal> & { shouldUpdate?: boolean })[]) => {
     // This function is kept for compatibility but the actual import logic is now handled
     // by the simplified CSV processor in useDealsImportExport hook
+    console.log('handleImportDeals called with:', importedDeals.length, 'deals');
     // Refresh data after import
     await fetchDeals();
   };
@@ -248,7 +279,11 @@ const DealsPage = () => {
     setIsCreating(false);
   };
 
-  // Redundant auth redirect removed — ProtectedRoute handles this
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate("/auth");
+    }
+  }, [user, authLoading, navigate]);
 
   // Handle highlight from notification click
   useEffect(() => {
@@ -291,6 +326,7 @@ const DealsPage = () => {
             table: 'deals'
           },
           (payload) => {
+            console.log('Real-time deal change:', payload);
             
             if (payload.eventType === 'INSERT') {
               setDeals(prev => [payload.new as Deal, ...prev]);
@@ -307,6 +343,7 @@ const DealsPage = () => {
 
       // Listen for custom import events
       const handleImportEvent = () => {
+        console.log('DealsPage: Received deals-data-updated event, refreshing...');
         fetchDeals();
       };
       

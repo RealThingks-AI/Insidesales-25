@@ -94,7 +94,19 @@ export const useSecureContacts = () => {
 
   const updateContact = async (id: string, updates: Partial<Contact>) => {
     try {
-      const existingContact = contacts.find(c => c.id === id);
+      let existingContact = contacts.find(c => c.id === id);
+      
+      // If not found in local state, fetch from DB before update
+      if (!existingContact) {
+        try {
+          const { data } = await supabase
+            .from('contacts')
+            .select('*')
+            .eq('id', id)
+            .single();
+          if (data) existingContact = data as Contact;
+        } catch { /* proceed without old data */ }
+      }
       
       const query = supabase
         .from('contacts')

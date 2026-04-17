@@ -1,9 +1,9 @@
 import { ContactTable } from "@/components/ContactTable";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Settings, MoreVertical, Upload, Plus, Trash2, Download, Search } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,7 +18,6 @@ const Contacts = () => {
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onRefresh = () => {
@@ -46,7 +45,6 @@ const Contacts = () => {
 
   const handleBulkDelete = async () => {
     if (selectedContacts.length === 0) return;
-    setShowDeleteConfirm(false);
     try {
       const { error } = await supabase.from('contacts').delete().in('id', selectedContacts);
       if (error) throw error;
@@ -118,7 +116,7 @@ const Contacts = () => {
                 Export CSV
               </DropdownMenuItem>
               {selectedContacts.length > 0 && (
-                <DropdownMenuItem onClick={() => setShowDeleteConfirm(true)} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={handleBulkDelete} className="text-destructive focus:text-destructive">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete Selected ({selectedContacts.length})
                 </DropdownMenuItem>
@@ -137,24 +135,6 @@ const Contacts = () => {
         className="hidden" 
         disabled={isImporting} 
       />
-
-      {/* Bulk Delete Confirmation */}
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedContacts.length} Contact{selectedContacts.length !== 1 ? 's' : ''}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The selected contacts will be permanently deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Content Area */}
       <div className="flex-1 min-h-0 overflow-hidden">

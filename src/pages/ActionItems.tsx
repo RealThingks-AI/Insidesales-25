@@ -16,7 +16,7 @@ import { ActionItemModal } from '@/components/ActionItemModal';
 import { useAllUsers } from '@/hooks/useUserDisplayNames';
 import { useActionItemColumnPreferences } from '@/hooks/useActionItemColumnPreferences';
 import { Badge } from '@/components/ui/badge';
-import { useCRUDAudit } from '@/hooks/useCRUDAudit';
+
 type ViewMode = 'list' | 'kanban' | 'calendar';
 export default function ActionItems() {
   const {
@@ -41,7 +41,7 @@ export default function ActionItems() {
     columnWidths,
     updateColumnWidth
   } = useActionItemColumnPreferences();
-  const { logCreate, logUpdate, logDelete, logBulkUpdate, logBulkDelete } = useCRUDAudit();
+  
 
   // URL params for highlight from notifications
   const [searchParams, setSearchParams] = useSearchParams();
@@ -128,7 +128,7 @@ export default function ActionItems() {
   }, [highlightId]);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
-  const hasActiveFilters = filters.module_type !== 'all' || filters.priority !== 'all' || filters.status !== 'all' || filters.assigned_to !== 'all' || filters.search !== '';
+  const hasActiveFilters = filters.module_type !== 'all' || filters.priority !== 'all' || filters.status !== 'all' || filters.assigned_to !== 'all' || filters.search !== '' || (filters as any).campaign_filter !== undefined;
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -188,19 +188,8 @@ export default function ActionItems() {
         id: editingItem.id,
         ...data
       });
-      logUpdate('action_items', editingItem.id, data, {
-        title: editingItem.title,
-        status: editingItem.status,
-        priority: editingItem.priority,
-        assigned_to: editingItem.assigned_to,
-        due_date: editingItem.due_date,
-        description: editingItem.description,
-      });
     } else {
-      const result = await createActionItem(data);
-      if (result) {
-        logCreate('action_items', result.id || 'unknown', { title: data.title, status: data.status, priority: data.priority });
-      }
+      await createActionItem(data);
     }
     setEditingItem(null);
   };
@@ -210,18 +199,14 @@ export default function ActionItems() {
   };
   const confirmDelete = async () => {
     if (itemToDelete) {
-      const item = actionItems.find(a => a.id === itemToDelete);
       await deleteActionItem(itemToDelete);
-      logDelete('action_items', itemToDelete, item ? { title: item.title, status: item.status, priority: item.priority } : undefined);
       setItemToDelete(null);
     }
     setDeleteDialogOpen(false);
   };
   const handleStatusChange = async (id: string, status: ActionItemStatus) => {
     try {
-      const item = actionItems.find(a => a.id === id);
       await updateActionItem({ id, status });
-      logUpdate('action_items', id, { status }, { title: item?.title, status: item?.status });
       if (status === 'Completed' && !filters.showArchived) {
         toast({ title: "Item completed", description: "Moved to the Completed view." });
       }
@@ -231,42 +216,41 @@ export default function ActionItems() {
   };
   const handlePriorityChange = async (id: string, priority: ActionItemPriority) => {
     try {
-      const item = actionItems.find(a => a.id === id);
       await updateActionItem({ id, priority });
-      logUpdate('action_items', id, { priority }, { title: item?.title, priority: item?.priority });
     } catch (error) {
       console.error('Failed to update priority:', error);
     }
   };
   const handleAssignedToChange = async (id: string, userId: string | null) => {
     try {
-      const item = actionItems.find(a => a.id === id);
       await updateActionItem({ id, assigned_to: userId });
-      logUpdate('action_items', id, { assigned_to: userId }, { title: item?.title, assigned_to: item?.assigned_to });
     } catch (error) {
       console.error('Failed to update assignee:', error);
     }
   };
   const handleDueDateChange = async (id: string, date: string | null) => {
     try {
-      const item = actionItems.find(a => a.id === id);
       await updateActionItem({ id, due_date: date });
-      logUpdate('action_items', id, { due_date: date }, { title: item?.title, due_date: item?.due_date });
     } catch (error) {
       console.error('Failed to update due date:', error);
     }
   };
   const handleBulkComplete = async () => {
-    await bulkUpdateStatus({
-      ids: selectedIds,
-      status: 'Completed'
-    });
-    logBulkUpdate('action_items', selectedIds.length, { status: 'Completed' });
+    if (selectedIds.length === 1) {
+      await updateActionItem({
+        id: selectedIds[0],
+        status: 'Completed'
+      });
+    } else {
+      await bulkUpdateStatus({
+        ids: selectedIds,
+        status: 'Completed'
+      });
+    }
     setSelectedIds([]);
   };
   const handleBulkDelete = async () => {
     await bulkDelete(selectedIds);
-    logBulkDelete('action_items', selectedIds.length, selectedIds);
     setSelectedIds([]);
     setBulkDeleteDialogOpen(false);
   };
@@ -309,6 +293,20 @@ export default function ActionItems() {
             <Input placeholder="Search action items..." value={filters.search} onChange={e => updateFilter('search', e.target.value)} className="pl-9" />
           </div>
 
+
+          {/* Module Type Filter */}
+          <Select value={filters.module_type} onValueChange={value => updateFilter('module_type', value)}>
+            <SelectTrigger className="w-auto min-w-[100px] [&>svg]:hidden">
+              <SelectValue placeholder="Module" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Modules</SelectItem>
+              <SelectItem value="accounts">Accounts</SelectItem>
+              <SelectItem value="contacts">Contacts</SelectItem>
+              <SelectItem value="deals">Deals</SelectItem>
+              <SelectItem value="campaigns">Campaigns</SelectItem>
+            </SelectContent>
+          </Select>
 
           {/* Priority Filter */}
           <Select value={filters.priority} onValueChange={value => updateFilter('priority', value)}>

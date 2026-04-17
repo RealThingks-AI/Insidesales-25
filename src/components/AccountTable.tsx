@@ -40,17 +40,18 @@ interface Account {
 
 const defaultColumns: AccountColumnConfig[] = [
   { field: 'account_name', label: 'Account Name', visible: true, order: 0 },
-  { field: 'linked_contacts', label: 'Linked', visible: true, order: 1 },
-  { field: 'status', label: 'Status', visible: true, order: 2 },
-  { field: 'company_type', label: 'Company Type', visible: true, order: 3 },
-  { field: 'industry', label: 'Industry', visible: true, order: 4 },
-  { field: 'phone', label: 'Phone', visible: true, order: 5 },
-  { field: 'website', label: 'Website', visible: true, order: 6 },
-  { field: 'country', label: 'Country', visible: true, order: 7 },
-  { field: 'region', label: 'Region', visible: true, order: 8 },
-  { field: 'currency', label: 'Currency', visible: true, order: 9 },
-  { field: 'created_time', label: 'Created', visible: false, order: 10 },
-  { field: 'account_owner', label: 'Account Owner', visible: true, order: 11 },
+  { field: 'description', label: 'Description', visible: true, order: 1 },
+  { field: 'linked_contacts', label: 'Linked', visible: true, order: 2 },
+  { field: 'status', label: 'Status', visible: true, order: 3 },
+  { field: 'company_type', label: 'Company Type', visible: true, order: 4 },
+  { field: 'industry', label: 'Industry', visible: true, order: 5 },
+  { field: 'phone', label: 'Phone', visible: true, order: 6 },
+  { field: 'website', label: 'Website', visible: true, order: 7 },
+  { field: 'country', label: 'Country', visible: true, order: 8 },
+  { field: 'region', label: 'Region', visible: true, order: 9 },
+  { field: 'currency', label: 'Currency', visible: true, order: 10 },
+  { field: 'created_time', label: 'Created', visible: false, order: 11 },
+  { field: 'account_owner', label: 'Account Owner', visible: true, order: 12 },
 ];
 
 interface AccountTableProps {
@@ -123,7 +124,7 @@ export const AccountTable = ({
         sortField: sortField || undefined,
         sortDirection,
         searchTerm: debouncedSearch || undefined,
-        searchFields: ['account_name', 'phone', 'country', 'industry', 'company_type', 'website'],
+        searchFields: ['account_name', 'description', 'phone', 'country', 'industry', 'company_type', 'website'],
         filters,
       });
 

@@ -57,7 +57,7 @@ export const EmailAnalyticsDashboard = () => {
         if (error) throw error;
 
         const totalSent = emails?.length || 0;
-        const totalOpened = emails?.filter((e: any) => e.open_count && e.open_count > 0 && e.is_valid_open !== false && e.status !== 'bounced' && !e.bounce_type).length || 0;
+        const totalOpened = emails?.filter((e: any) => e.open_count && e.open_count > 0).length || 0;
         const totalBounced = emails?.filter((e: any) => e.bounce_type || e.status === 'bounced').length || 0;
         const totalReplied = emails?.filter((e: any) => e.status === 'replied' || (e.reply_count && e.reply_count > 0)).length || 0;
         const nonBouncedCount = totalSent - totalBounced;
@@ -76,7 +76,7 @@ export const EmailAnalyticsDashboard = () => {
           return {
             date: format(date, 'dd MMM'),
             sent: dayEmails.length,
-            opened: dayEmails.filter((e: any) => e.open_count && e.open_count > 0 && e.is_valid_open !== false && e.status !== 'bounced' && !e.bounce_type).length,
+            opened: dayEmails.filter((e: any) => e.open_count && e.open_count > 0).length,
             bounced: dayEmails.filter((e: any) => e.bounce_type || e.status === 'bounced').length,
             replied: dayEmails.filter((e: any) => e.status === 'replied' || (e.reply_count && e.reply_count > 0)).length,
           };

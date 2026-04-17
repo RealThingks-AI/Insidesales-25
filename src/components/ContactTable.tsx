@@ -17,16 +17,22 @@ interface Contact {
   position?: string;
   email?: string;
   phone_no?: string;
+  mobile_no?: string;
   region?: string;
+  city?: string;
+  state?: string;
   contact_owner?: string;
   created_time?: string;
   modified_time?: string;
   last_activity_time?: string;
+  lead_status?: string;
   industry?: string;
   contact_source?: string;
   linkedin?: string;
   website?: string;
   description?: string;
+  annual_revenue?: number;
+  no_of_employees?: number;
   created_by?: string;
   modified_by?: string;
 }

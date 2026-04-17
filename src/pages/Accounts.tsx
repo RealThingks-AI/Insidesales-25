@@ -1,13 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { Plus, Upload, Download, Columns, MoreVertical, Search, Trash2, X } from "lucide-react";
+import { Plus, Upload, Download, Columns, MoreVertical, Search, Filter, Trash2, X, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -15,8 +12,6 @@ import { AccountTable } from "@/components/AccountTable";
 import { useSimpleAccountsImportExport } from "@/hooks/useSimpleAccountsImportExport";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
-import { useToast } from "@/hooks/use-toast";
-import { useCRUDAudit } from "@/hooks/useCRUDAudit";
 
 const Accounts = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -27,10 +22,7 @@ const Accounts = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
-  const { logBulkDelete } = useCRUDAudit();
 
   const { handleImport, handleExport, isImporting } = useSimpleAccountsImportExport(() => {
     setRefreshTrigger(prev => prev + 1);
@@ -53,21 +45,6 @@ const Accounts = () => {
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) { handleImport(file); event.target.value = ''; }
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedAccounts.length === 0) return;
-    setShowDeleteConfirm(false);
-    try {
-      const { error } = await supabase.from('accounts').delete().in('id', selectedAccounts);
-      if (error) throw error;
-      await logBulkDelete('accounts', selectedAccounts.length, selectedAccounts);
-      toast({ title: "Success", description: `${selectedAccounts.length} accounts deleted` });
-      setSelectedAccounts([]);
-      setRefreshTrigger(prev => prev + 1);
-    } catch {
-      toast({ title: "Error", description: "Failed to delete accounts", variant: "destructive" });
-    }
   };
 
   return (
@@ -144,32 +121,11 @@ const Accounts = () => {
             {selectedAccounts.length} item{selectedAccounts.length !== 1 ? 's' : ''} selected
           </span>
           <div className="flex-1" />
-          <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
-            <Trash2 className="h-4 w-4 mr-1" /> Delete
-          </Button>
           <Button variant="ghost" size="sm" onClick={() => setSelectedAccounts([])} className="text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4 mr-1" /> Clear
           </Button>
         </div>
       )}
-
-      {/* Bulk Delete Confirmation */}
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedAccounts.length} Account{selectedAccounts.length !== 1 ? 's' : ''}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The selected accounts will be permanently deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileUpload} className="hidden" disabled={isImporting} />
 

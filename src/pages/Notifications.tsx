@@ -254,7 +254,7 @@ const Notifications = () => {
                             </Badge>
                           )}
                           <Badge variant="outline" className="text-xs capitalize">
-                            {notification.notification_type.replace(/_/g, ' ')}
+                            {notification.notification_type.replace('_', ' ')}
                           </Badge>
                         </div>
                       </div>

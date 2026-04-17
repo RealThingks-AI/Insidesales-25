@@ -81,7 +81,7 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
         .select('*')
         .order('due_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .limit(5000);
 
       if (filters.module_type !== 'all') {
         query = query.eq('module_type', filters.module_type);
@@ -241,6 +241,18 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
         });
       }
 
+      // If old item not found in cache, fetch from DB (DB still has old data at onMutate time)
+      if (!oldItem) {
+        try {
+          const { data } = await supabase
+            .from('action_items')
+            .select('*')
+            .eq('id', updatedItem.id)
+            .single();
+          if (data) oldItem = data as ActionItem;
+        } catch { /* proceed without old data */ }
+      }
+
       return { previousSnapshots, oldItem };
     },
     onError: (error: any, _updatedItem, context) => {
@@ -332,10 +344,17 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
 
       const queryKeys = getActionItemsQueryKeys();
       const previousSnapshots: { queryKey: readonly unknown[]; data: unknown }[] = [];
+      let oldItems: ActionItem[] = [];
 
       for (const queryKey of queryKeys) {
         const data = queryClient.getQueryData(queryKey);
         previousSnapshots.push({ queryKey, data });
+
+        // Capture old items for audit logging (only once)
+        if (oldItems.length === 0 && Array.isArray(data)) {
+          const idSet = new Set(ids);
+          oldItems = (data as ActionItem[]).filter(item => idSet.has(item.id));
+        }
 
         queryClient.setQueryData(queryKey, (old: ActionItem[] | undefined) => {
           if (!old) return old;
@@ -348,7 +367,18 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
         });
       }
 
-      return { previousSnapshots };
+      // If old items not found in cache, fetch from DB (DB still has old data at onMutate time)
+      if (oldItems.length === 0) {
+        try {
+          const { data } = await supabase
+            .from('action_items')
+            .select('*')
+            .in('id', ids);
+          if (data) oldItems = data as ActionItem[];
+        } catch { /* proceed without old data */ }
+      }
+
+      return { previousSnapshots, oldItems };
     },
     onError: (error, _vars, context) => {
       console.error('Error updating action items:', error);
@@ -359,9 +389,32 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
         }
       }
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables, context) => {
       toast.success('Action items updated successfully');
-      logBulkUpdate('action_items', variables.ids.length, { status: variables.status, record_ids: variables.ids.slice(0, 10) });
+      const oldItems = context?.oldItems || [];
+      
+      // Single item: log as regular UPDATE with field-level changes
+      if (variables.ids.length === 1) {
+        const itemId = variables.ids[0];
+        const item = oldItems[0];
+        
+        const oldStatus = item?.status || 'Open';
+        const itemTitle = item?.title || 'Untitled Action Item';
+        logUpdate('action_items', itemId, 
+          { status: variables.status },
+          { status: oldStatus, title: itemTitle, module_type: item?.module_type || 'action_items' }
+        );
+      } else {
+        // Multiple items: log as BULK_UPDATE with titles
+        const itemTitles = oldItems.map(i => i.title).filter(Boolean);
+        
+        logBulkUpdate('action_items', variables.ids.length, {
+          status: variables.status,
+          record_ids: variables.ids.slice(0, 10),
+          item_titles: itemTitles.slice(0, 10),
+          module: 'action_items',
+        });
+      }
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['action_items'] });

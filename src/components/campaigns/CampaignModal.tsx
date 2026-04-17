@@ -1,191 +1,240 @@
-import { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCampaigns } from '@/hooks/useCampaigns';
-import { CAMPAIGN_STATUSES, CAMPAIGN_TYPES, AUDIENCE_SEGMENTS } from '@/types/campaign';
-import type { Campaign } from '@/types/campaign';
-import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/hooks/useAuth";
+import { useCampaigns, type CampaignFormData, type Campaign } from "@/hooks/useCampaigns";
+import { supabase } from "@/integrations/supabase/client";
+import { useAllUsers } from "@/hooks/useUserDisplayNames";
 
-interface Props {
+const CAMPAIGN_TYPES = ["Cold Outreach", "Nurture", "Re-engagement", "Event", "Product Launch"];
+
+interface CampaignModalProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
-  campaign: Campaign | null;
+  onClose: () => void;
+  campaign?: Campaign | null;
+  isMARTComplete?: boolean;
+  onCreated?: (id: string) => void;
 }
 
-export function CampaignModal({ open, onOpenChange, campaign }: Props) {
-  const { createCampaign, updateCampaign } = useCampaigns();
+export function CampaignModal({ open, onClose, campaign, isMARTComplete = false, onCreated }: CampaignModalProps) {
   const { user } = useAuth();
-  const { toast } = useToast();
-  const isEdit = !!campaign;
+  const { createCampaign, updateCampaign } = useCampaigns();
+  const { users: allUsers } = useAllUsers();
+  const isEditing = !!campaign;
 
-  const profilesQuery = useQuery({
-    queryKey: ['profiles_for_owner'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('id, full_name, "Email ID"');
-      if (error) throw error;
-      return data || [];
-    },
+  const [formData, setFormData] = useState<CampaignFormData>({
+    campaign_name: "",
+    campaign_type: "Cold Outreach",
+    goal: "",
+    owner: user?.id || "",
+    start_date: "",
+    end_date: "",
+    status: "Draft",
+    notes: "",
+    description: "",
   });
 
-  const profiles = profilesQuery.data || [];
-
-  const [form, setForm] = useState({
-    campaign_name: '',
-    description: '',
-    campaign_type: 'Email',
-    status: 'Draft',
-    owner: '',
-    start_date: '',
-    end_date: '',
-    region: '',
-    country: '',
-    target_audience: '',
-    message_strategy: '',
-  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (campaign) {
-      setForm({
+      setFormData({
         campaign_name: campaign.campaign_name,
-        description: campaign.description || '',
-        campaign_type: campaign.campaign_type || 'Email',
-        status: campaign.status,
-        owner: campaign.owner || '',
-        start_date: campaign.start_date || '',
-        end_date: campaign.end_date || '',
-        region: campaign.region || '',
-        country: campaign.country || '',
-        target_audience: campaign.target_audience || '',
-        message_strategy: campaign.message_strategy || '',
+        campaign_type: campaign.campaign_type || "Cold Outreach",
+        goal: campaign.goal || "",
+        owner: campaign.owner || user?.id || "",
+        start_date: campaign.start_date || "",
+        end_date: campaign.end_date || "",
+        status: campaign.status || "Draft",
+        notes: campaign.notes || "",
+        description: campaign.description || "",
       });
     } else {
-      setForm({
-        campaign_name: '',
-        description: '',
-        campaign_type: 'Email',
-        status: 'Draft',
-        owner: user?.id || '',
-        start_date: '',
-        end_date: '',
-        region: '',
-        country: '',
-        target_audience: '',
-        message_strategy: '',
+      setFormData({
+        campaign_name: "",
+        campaign_type: "Cold Outreach",
+        goal: "",
+        owner: user?.id || "",
+        start_date: "",
+        end_date: "",
+        status: "Draft",
+        notes: "",
+        description: "",
       });
     }
-  }, [campaign, open]);
+    setErrors({});
+  }, [campaign, open, user?.id]);
 
-  const handleSubmit = async () => {
-    if (!form.campaign_name.trim()) return;
-    if (form.start_date && form.end_date && form.start_date > form.end_date) {
-      toast({ title: 'Start date cannot be after end date', variant: 'destructive' });
-      return;
+  const validate = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.campaign_name.trim() || formData.campaign_name.trim().length < 2) newErrors.campaign_name = "Campaign name is required (min 2 chars)";
+    if (!formData.campaign_type) newErrors.campaign_type = "Type is required";
+    if (!formData.goal.trim()) newErrors.goal = "Goal is required";
+    if (!formData.owner) newErrors.owner = "Owner is required";
+    if (!formData.start_date) newErrors.start_date = "Start date is required";
+    if (!formData.end_date) newErrors.end_date = "End date is required";
+    if (formData.start_date && formData.end_date && formData.start_date >= formData.end_date) {
+      newErrors.end_date = "End date must be after start date";
     }
-    const payload = {
-      ...form,
-      owner: form.owner || null,
-      start_date: form.start_date || null,
-      end_date: form.end_date || null,
-    };
-    if (isEdit) {
-      await updateCampaign.mutateAsync({ id: campaign!.id, ...payload });
-    } else {
-      await createCampaign.mutateAsync(payload);
+    if (isEditing && formData.status === "Active" && !isMARTComplete) {
+      newErrors.status = "Complete all MART sections before setting Active";
     }
-    onOpenChange(false);
+    // Block Completed campaigns from changing status
+    if (isEditing && campaign?.status === "Completed" && formData.status !== "Completed") {
+      newErrors.status = "Completed campaigns cannot be reactivated";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const set = (key: string, value: string) => setForm(f => ({ ...f, [key]: value }));
+  const checkDuplicateName = async (): Promise<boolean> => {
+    const trimmedName = formData.campaign_name.trim();
+    const { data } = await supabase
+      .from("campaigns")
+      .select("id")
+      .ilike("campaign_name", trimmedName);
+    
+    if (data && data.length > 0) {
+      // If editing, exclude the current campaign
+      const duplicates = isEditing && campaign 
+        ? data.filter(d => d.id !== campaign.id) 
+        : data;
+      if (duplicates.length > 0) {
+        setErrors(prev => ({ ...prev, campaign_name: "A campaign with this name already exists" }));
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!validate()) return;
+    
+    setSubmitting(true);
+    const isDuplicate = await checkDuplicateName();
+    if (isDuplicate) {
+      setSubmitting(false);
+      return;
+    }
+
+    if (isEditing && campaign) {
+      updateCampaign.mutate({ id: campaign.id, ...formData }, { onSuccess: onClose, onSettled: () => setSubmitting(false) });
+    } else {
+      createCampaign.mutate(formData, {
+        onSuccess: (data) => {
+          onClose();
+          if (onCreated && data?.id) onCreated(data.id);
+        },
+        onSettled: () => setSubmitting(false),
+      });
+    }
+  };
+
+  // Statuses available based on MART completion and current status
+  const getAvailableStatuses = () => {
+    if (isEditing && campaign?.status === "Completed") return ["Completed"];
+    const statuses = ["Draft", "Paused", "Completed"];
+    if (isMARTComplete) statuses.splice(1, 0, "Active");
+    return statuses;
+  };
+
+  const ownerOptions = allUsers.map((u) => ({ id: u.id, name: u.display_name }));
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Campaign' : 'New Campaign'}</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Campaign" : "Create Campaign"}</DialogTitle>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-4 mt-2">
-          <div className="col-span-2">
-            <Label>Campaign Name *</Label>
-            <Input value={form.campaign_name} onChange={e => set('campaign_name', e.target.value)} />
+
+        <div className="grid gap-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="campaign_name">Campaign Name *</Label>
+            <Input id="campaign_name" value={formData.campaign_name} onChange={(e) => setFormData({ ...formData, campaign_name: e.target.value })} placeholder="Enter campaign name" />
+            {errors.campaign_name && <p className="text-sm text-destructive">{errors.campaign_name}</p>}
           </div>
-          <div>
-            <Label>Type</Label>
-            <Select value={form.campaign_type} onValueChange={v => set('campaign_type', v)}>
+
+          <div className="space-y-2">
+            <Label>Campaign Type *</Label>
+            <Select value={formData.campaign_type} onValueChange={(v) => setFormData({ ...formData, campaign_type: v })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {CAMPAIGN_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                {CAMPAIGN_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
+            {errors.campaign_type && <p className="text-sm text-destructive">{errors.campaign_type}</p>}
           </div>
-          <div>
-            <Label>Status</Label>
-            <Select value={form.status} onValueChange={v => set('status', v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {CAMPAIGN_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
+
+          <div className="space-y-2">
+            <Label htmlFor="goal">Campaign Goal *</Label>
+            <Textarea id="goal" value={formData.goal} onChange={(e) => setFormData({ ...formData, goal: e.target.value })} placeholder="Describe the campaign goal" rows={3} />
+            {errors.goal && <p className="text-sm text-destructive">{errors.goal}</p>}
           </div>
-          <div>
-            <Label>Owner</Label>
-            <Select value={form.owner} onValueChange={v => set('owner', v)}>
+
+          <div className="space-y-2">
+            <Label>Owner *</Label>
+            <Select value={formData.owner} onValueChange={(v) => setFormData({ ...formData, owner: v })}>
               <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
               <SelectContent>
-                {profiles.map((p: any) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.full_name || p['Email ID'] || p.id}
-                  </SelectItem>
-                ))}
+                {ownerOptions.length > 0 ? (
+                  ownerOptions.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)
+                ) : (
+                  <SelectItem value={user?.id || ""}>{user?.user_metadata?.full_name || user?.email || "Me"}</SelectItem>
+                )}
               </SelectContent>
             </Select>
+            {errors.owner && <p className="text-sm text-destructive">{errors.owner}</p>}
           </div>
-          <div>
-            <Label>Target Audience</Label>
-            <Select value={form.target_audience} onValueChange={v => set('target_audience', v)}>
-              <SelectTrigger><SelectValue placeholder="Select audience" /></SelectTrigger>
-              <SelectContent>
-                {AUDIENCE_SEGMENTS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-              </SelectContent>
-            </Select>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="start_date">Start Date *</Label>
+              <Input id="start_date" type="date" value={formData.start_date} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} />
+              {errors.start_date && <p className="text-sm text-destructive">{errors.start_date}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="end_date">End Date *</Label>
+              <Input id="end_date" type="date" value={formData.end_date} onChange={(e) => setFormData({ ...formData, end_date: e.target.value })} />
+              {errors.end_date && <p className="text-sm text-destructive">{errors.end_date}</p>}
+            </div>
           </div>
-          <div>
-            <Label>Start Date</Label>
-            <Input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} />
+
+          {isEditing && (
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {getAvailableStatuses().map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {errors.status && <p className="text-sm text-destructive">{errors.status}</p>}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea id="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Campaign description..." rows={2} />
           </div>
-          <div>
-            <Label>End Date</Label>
-            <Input type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} />
-          </div>
-          <div>
-            <Label>Region</Label>
-            <Input value={form.region} onChange={e => set('region', e.target.value)} />
-          </div>
-          <div>
-            <Label>Country</Label>
-            <Input value={form.country} onChange={e => set('country', e.target.value)} />
-          </div>
-          <div className="col-span-2">
-            <Label>Description</Label>
-            <Textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2} />
-          </div>
-          <div className="col-span-2">
-            <Label>Campaign Goal / Message Strategy</Label>
-            <Textarea value={form.message_strategy} onChange={e => set('message_strategy', e.target.value)} rows={3} placeholder="Describe the campaign goal and messaging approach..." />
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes..." rows={2} />
           </div>
         </div>
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!form.campaign_name.trim()}>
-            {isEdit ? 'Save Changes' : 'Create Campaign'}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={submitting || createCampaign.isPending || updateCampaign.isPending}>
+            {submitting || createCampaign.isPending || updateCampaign.isPending ? "Saving..." : isEditing ? "Update" : "Create"}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
